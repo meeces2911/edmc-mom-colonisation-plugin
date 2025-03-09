@@ -12,10 +12,11 @@ from tkinter import ttk
 from threading import Lock, Thread
 from monitor import monitor
 from pathlib import Path
-from queue import Queue
+from queue import SimpleQueue
 
 import semantic_version
 import time
+import json
 
 import myNotebook as nb
 from config import config, appname, appversion, user_agent
@@ -23,7 +24,8 @@ from companion import CAPIData, SERVER_LIVE
 from ttkHyperlinkLabel import HyperlinkLabel
 from prefs import AutoInc
 
-from sheet import Sheet, Auth
+from sheet import Sheet
+from auth import Auth
 
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
@@ -36,10 +38,9 @@ class This:
     
     def __init__(self):
         self.thread: threading.Thread | None = None
-        self.shutting_down: bool = False
         
         self.auth: Auth | None = None
-        self.queue: Queue[PushRequest] = Queue()
+        self.queue: SimpleQueue[PushRequest] = SimpleQueue()
         
         self.enabled: bool = True
         
@@ -47,7 +48,13 @@ class This:
         self.requests_session.headers['User-Agent'] = user_agent
 
         self.sheet: Sheet | None = None
-        self.configSheetName: str = ''
+        self.configSheetName: tk.StringVar
+
+        self.currentCargo: dict | None = None
+        self.carrierCallsign: str | None = None
+
+        self.clearAuthButton: tk.Button | None = None
+        self.settingsClosed: bool = False
 
     def __del__(self):
         if self.requests_session:
@@ -57,9 +64,19 @@ this = This()
 
 class PushRequest:
     """Holds info about things to send to the Google Sheet"""
-    
-    def __init__(self):
-        """ TODO """
+    TYPE_CMDR_SELL: int = 1
+    TYPE_CARRIER_LOC_UPDATE: int = 2
+    TYPE_CARRIER_MARKET_UPDATE: int = 3
+    TYPE_CMDR_BUY: int = 4
+    TYPE_CARRIER_BUY_SELL_ORDER_UPDATE: int = 5
+    TYPE_CARRIER_JUMP: int = 6
+    TYPE_SCS_SELL: int = 7
+
+    def __init__(self, cmdr, station: str, reqType: int, data: dict):
+        self.cmdr = cmdr
+        self.station = station
+        self.type = reqType
+        self.data = data
 
 def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Frame:
     """
@@ -71,6 +88,7 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
     BOXY = 2
     SEPY = 10
 
+    this.settingsClosed = False
     this.configSheetName = tk.StringVar(value=config.get_str('configSheetName', default='EDMC Plugin Settings'))
 
     frame = nb.Frame(parent)
@@ -82,8 +100,8 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
         HyperlinkLabel(
             frame, text='MERC Expedition Needs', background=nb.Label().cget('background'), url='https://docs.google.com/spreadsheets/d/1dB8Zty_tGoEHFjXQh5kfOeEfL_tsByRyZI8d_sY--4M/edit',
             underline=True
-        ).grid(row=cur_row, columnspan=2, padx=PADX, pady=PADY, sticky=tk.W)    
-        nb.Label(frame, text='Version %s' % VERSION).grid(row=cur_row, column=3, padx=PADX, pady=PADY, sticky=tk.W)
+        ).grid(row=cur_row, columnspan=2, padx=PADX, pady=PADY+4, sticky=tk.W)    
+        nb.Label(frame, text='Version %s' % VERSION).grid(row=cur_row, column=3, padx=PADX, pady=PADY+4, sticky=tk.W)
 
     ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row.get(), columnspan=4, padx=PADX, pady=PADY, sticky=tk.EW)
 
@@ -93,17 +111,31 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
         sheetNames: list[str] = ('ERROR')
         
     with row as cur_row:
-        nb.Label(frame, text='Settings Sheet').grid(row=cur_row, column=1, padx=PADX, pady=PADY, sticky=tk.W)
+        nb.Label(frame, text='Settings Sheet').grid(row=cur_row, column=0, padx=PADX, pady=PADY, sticky=tk.W)
         nb.OptionMenu(
             frame, this.configSheetName, this.configSheetName.get(), *sheetNames
-        ).grid(row=cur_row, column=2, columnspan=1, padx=PADX, pady=BOXY, sticky=tk.W)
+        ).grid(row=cur_row, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
+
+    this.clearAuthButton = ttk.Button(
+        frame,
+        text='Clear Google Authentication',
+        command=lambda: clear_token_and_disable_button(),
+        state=tk.ACTIVE if this.auth.access_token else tk.DISABLED
+    )
+    this.clearAuthButton.grid(row=row.get(), padx=BUTTONX, pady=PADY, sticky=tk.W)
 
     return frame
 
-def prefs_cmdr_changed(cmdr: str | None, is_beta: bool) -> None:
+def clear_token_and_disable_button() -> None:
+    logger.info('Clearing Google Authentication token')
+    this.auth.clear_auth_token()
+    this.clearAuthButton.configure(state=tk.DISABLED)
+
+def prefs_changed(cmdr: str | None, is_beta: bool) -> None:
     """
-    Save settings.
+    Reload settings for new CMDR
     """
+    this.settingsClosed = True
 
 def plugin_start3(plugin_dir: str) -> str:
     """
@@ -130,8 +162,6 @@ def plugin_start3(plugin_dir: str) -> str:
 def plugin_stop() -> None:
     """Stop the plugin"""
     logger.debug('Shutting down...')
-    this.shutting_down = True
-    this.auth.shutting_down = True
     
     this.thread.join()
     this.thread = None
@@ -150,31 +180,140 @@ def worker() -> None:
     logger.debug('Waiting for current cmdr to be identified...')
     while not monitor.cmdr:
         time.sleep(1 / 10)
-        if this.shutting_down:
+        if config.shutting_down:
+            logger.debug("Main: Shutting down, existing thread")
             return None
     
     # Get auth token first
     this.auth = Auth(monitor.cmdr, this.requests_session)
-    this.auth.refresh()
+    this.auth.refresh()    
 
     # Add bearer token to all future requests
     this.requests_session.headers['Authorization'] = f'Bearer {this.auth.access_token}'
 
     # Ok, now make sure we can access the spreadsheet
-    this.sheet = Sheet(logger, this.auth, this.requests_session)
+    this.sheet = Sheet(this.auth, this.requests_session)
     
     # Request some initial settings
     this.sheet.populate_initial_settings()
     
     # Then start the main loop
+    logger.debug("Startup complete, entering main loop")
     while True:
         # Do some stuff
-        time.sleep(1 / 10)
-            
-        if this.shutting_down:
+        
+        # Auth token has been cleared via the button in settings
+        if not this.auth.access_token:
+            while not this.settingsClosed:
+                if config.shutting_down:
+                    logger.debug("Main: Shutting down, exiting thread")
+                    return None
+                # Spin
+                time.sleep(1 / 10)
+
+            this.auth.refresh()
+
+        while process_kill_siwtches():
+            logger.warning('Killsiwtch Active, reporting paused... [retrying in 60 seconds]')
+            for i in range(1, 60):
+                ## Don't sleep for the full 60 seconds here, in case shutdown is called, we need to quit ASAP
+                time.sleep(1)
+                if config.shutting_down:
+                    logger.debug('Main: Shutting down, exiting thread')
+                    return None
+
+        ##logger.debug('Checking for next item in the queue... [Queue Empty: ' + str(this.queue.empty()) + ']')
+        try:
+            item: PushRequest = this.queue.get(timeout=1)
+            process_item(item)
+        except:
+            # Empty, all good, lets go around again
+            pass
+
+        if config.shutting_down:
             logger.debug('Main: Shutting down, exiting thread')
             this.auth = None
             return None
+
+def process_kill_siwtches() -> bool:
+    """Go through all the killswitches and if any match, return True to suspend the plugin"""
+    switches = this.sheet.killswitches
+    
+    if len(switches) == 0:
+        return False
+    
+    if 'last updated' in switches:
+        #logger.debug('Checking if update required')
+        if time.localtime() > time.localtime(float(switches.get('last updated')) + 59):
+            this.sheet.populate_initial_settings()
+
+    if 'enabled' in switches:
+        if not switches.get('enabled') == 'true':
+            logger.warning('Killswitch: Enabled = False')
+            return True
+        
+    if 'minimum version' in switches:
+        if semantic_version.Version(VERSION) < semantic_version.Version(switches.get('minimum version')):
+            logger.warning(f'Killswitch: Minimum Version ({switches.get("minimum version")}) is higher than us')
+            return True
+        
+    return False
+
+def process_item(item: PushRequest) -> None:
+    logger.debug(f'Processing item: [{item.type}] {item.data}')
+    sheetName = this.sheet.carrierTabNames.get(item.station)
+    if item.type == PushRequest.TYPE_CMDR_SELL:
+        logger.debug('Processing CMDR Sell request')
+        commodity = item.data['Type']
+        amount = int(item.data['Count'])
+        this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount)
+    elif item.type == PushRequest.TYPE_CARRIER_LOC_UPDATE:
+        logger.debug('Processing Carrier Location update')
+        this.sheet.update_carrier_location(sheetName, item.data)
+    elif item.type == PushRequest.TYPE_CARRIER_MARKET_UPDATE:
+        logger.debug('Processing Carrier Market update')
+        this.sheet.update_carrier_market(sheetName, item.data)
+    elif item.type == PushRequest.TYPE_CMDR_BUY:
+        logger.debug('Processing CMDR Buy request')
+        commodity = item.data['Type']
+        amount = int(item.data['Count']) * -1   # We're removing from the carrier
+        this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount)
+    elif item.type == PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE:
+        logger.debug('Processing Carrier Buy/Sell Order update')
+        commodity = item.data['Commodity']
+        amount = 0
+        # Currently, only track Buy orders
+        if item.data.get('PurchaseOrder'):
+            amount = int(item.data['PurchaseOrder'])
+        this.sheet.update_carrier_market_entry(sheetName, item.station, commodity, amount)
+    elif item.type == PushRequest.TYPE_CARRIER_JUMP:
+        logger.debug('PRocessing Carrier Jump update')
+        destination = item.data.get('Body')
+        departTime = item.data.get('DepartureTime')
+        this.sheet.update_carrier_jump_location(sheetName, destination, departTime)
+    elif item.type == PushRequest.TYPE_SCS_SELL:
+        logger.debug('Processing SCS Sell request')
+        process_scs_market_updates(item.cmdr, item.station, item.data)
+
+def process_scs_market_updates(cmdr, station: str, data: dict) -> None:
+    """Because SCS transfers don't provide the same journal info, we'll have to get a bit more creative"""
+    # Its most likely that the current cargo will be empty, but that might not be the case
+    for cargoItem in data['oldCargo']:
+        logger.debug(f"Checking for difference in {cargoItem}")
+        if not cargoItem in data['newCargo']:
+            logger.debug('All Transferred')
+            amount = int(data['oldCargo'][cargoItem])
+            this.sheet.add_to_scs_sheet(cmdr, station, cargoItem, amount)
+        else:
+            logger.debug('Partial transfer (or none)')
+            oldAmount = int(data['oldCargo'][cargoItem])
+            newAmount = int(data['newCargo'][cargoItem])
+            if oldAmount == newAmount:
+                # Skip, nothing was actually transferred
+                logger.debug('none, skipping')
+                continue
+            else:
+                this.sheet.add_to_scs_sheet(cmdr, station, cargoItem, oldAmount - newAmount)    # Yes, this is backwards, but we want a positive amount
 
 def journal_entry(cmdr, is_beta, system, station, entry, state):
     logger.info(entry['event'])
@@ -200,8 +339,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             logger.info('StartUp: Flying in normal space')
         else:
             logger.info(f'StartUp: Docked at {station}')
-        logger.info(f'StartUp: Cargo {state["Cargo"]}')
-        logger.info(f'StartUp: CargoJSON {state["CargoJSON"]}')
+        this.currentCargo = state['Cargo']
     elif entry['event'] == 'Location':
         logger.info(f'Location: In system {system}')
         if station is None:
@@ -211,21 +349,37 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
     elif entry['event'] == 'FSDJump':
         logger.info(f'FSDJump: Arrived In system {system}')
     elif entry['event'] == 'Docked':
-        logger.info(f'Docked: In system {system}')
-        logger.info(f'Docked: Docked at {station}')
-        logger.info(f'Docked: Cargo {state["Cargo"]}')
-        logger.info(f'Docked: CargoJSON {state["CargoJSON"]}')
+        # Keep track of current cargo
+        this.currentCargo = state['Cargo']
+        
+         # Update the carrier location
+        if station in this.sheet.carrierTabNames.keys():
+            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_LOC_UPDATE, system))
+
     elif entry['event'] == 'Undocked':
-        logger.info(f'Undocked: In system {system}')
-        logger.info(f'Undocked: Undocked at {station}')
-        logger.info(f'Undocked: Cargo {state["Cargo"]}')
-        logger.info(f'Undocked: CargoJSON {state["CargoJSON"]}')
+         this.currentCargo = None
     elif entry['event'] == 'Cargo':
-        logger.info(f'Cargo: Cargo {state["Cargo"]}')
-        logger.info(f'Cargo: CargoJSON {state["CargoJSON"]}')
+        # SCS don't do MarketSell, but there are Cargo events, so lets just track what we started with and do a diff
+        if station == 'System Colonisation Ship':
+            data = {
+                'oldCargo': this.currentCargo,
+                'newCargo': state['Cargo']
+            }
+            this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_SELL, data))
+            this.currentCargo = state['Cargo']
     elif entry['event'] == 'Market':
-        logger.info(f'Market: Cargo {state["Cargo"]}')
-        logger.info(f'Market: CargoJSON {state["CargoJSON"]}')
+        # Actual market data is in the market.json file
+        if station in this.sheet.carrierTabNames.keys():
+            logger.debug(f'Station ({station}) known, checking market data')
+            journaldir = config.get_str('journaldir')
+            if journaldir is None or journaldir == '':
+                journaldir = config.default_journal_dir
+
+            path = Path(journaldir) / f'{entry["event"]}.json'
+            logger.debug(path)
+            with path.open('rb') as dataFile:
+                marketData = json.load(dataFile)
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_MARKET_UPDATE, marketData))
     elif entry['event'] == 'MarketSell':
         """
         {
@@ -240,14 +394,183 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             'AvgPricePaid': 650
         }
         """
-        logger.info(f'MarketSell: CMDR {cmdr} sold {entry["Count"]} {entry["Type_Localised"]} to {station}')
-        
+        logger.debug(f'MarketSell: CMDR {cmdr} sold {entry["Count"]} {entry["Type"]} to {station}')
+        if station in this.sheet.carrierTabNames.keys():
+            logger.debug('Station known, creating queue entry')
+            # Something for us to do, lets queue it
+            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, entry))
+        else:
+            #logger.debug(f'Station ({station}) unknown, skipping')
+            pass
+    elif entry['event'] == 'MarketBuy':
+        """
+        {
+            "timestamp": "2025-03-08T07:09:11Z",
+            "event": "MarketBuy",
+            "MarketID": 3231007232,
+            "Type": "superconductors",
+            "Count": 124,
+            "BuyPrice": 5862,
+            "TotalCost": 726888
+        }
+        """
+        logger.debug(f'MarketSell: CMDR {cmdr} bought {entry["Count"]} {entry["Type"]} from {station}')
+        if station in this.sheet.carrierTabNames.keys():
+            logger.debug('Station known, creating queue entry')
+            # Something for us to do, lets queue it
+            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_BUY, entry))
+        else:
+            #logger.debug(f'Station ({station}) unknown, skipping')
+            pass
+    elif entry['event'] == 'CarrierTradeOrder':
+        """
+        // BUY Order
+        {
+            "timestamp": "2025-03-08T05:39:13Z",
+            "event": "CarrierTradeOrder",
+            "CarrierID": 3707348992,
+            "BlackMarket": false,
+            "Commodity": "copper",
+            "PurchaseOrder": 252,
+            "Price": 1267
+        }
+        // SELL Order
+        {
+            "timestamp": "2025-03-08T23:57:41Z",
+            "event": "CarrierTradeOrder",
+            "CarrierID": 3707348992,
+            "BlackMarket": false,
+            "Commodity": "steel",
+            "SaleOrder": 70,
+            "Price": 4186
+        }
+        // CANCEL Order
+        {
+            "timestamp": "2025-03-09T00:06:29Z",
+            "event": "CarrierTradeOrder",
+            "CarrierID": 3707348992,
+            "BlackMarket": false,
+            "Commodity": "insulatingmembrane",
+            "Commodity_Localised": "Insulating Membrane",
+            "CancelTrade": true
+        }
+        """
+        if station in this.sheet.carrierTabNames.keys():
+            logger.debug('Station known, creating queue entry')
+            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE, entry))
+    elif entry['event'] == 'CarrierJumpRequest' or entry['event'] == 'CarrierJumpCancelled':
+        """
+        {
+            "timestamp": "2025-03-09T02:44:36Z",
+            "event": "CarrierJumpRequest",
+            "CarrierID": 3707348992,
+            "SystemName": "LTT 8001",
+            "Body": "LTT 8001 A 2",
+            "SystemAddress": 3107442365154,
+            "BodyID": 6,
+            "DepartureTime": "2025-03-09T03:36:10Z"
+        }
+        """
+        if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
+            logger.debug('Station known, creating queue entry')
+            this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
+    elif entry['event'] == 'CarrierStats':
+        """
+        {
+            'timestamp': '2025-03-09T05:07:21Z',
+            'event': 'CarrierStats',
+            'CarrierID': 3707348992,
+            'Callsign': 'X7H-9KW',
+            'Name': 'THE LAST RESORT',
+            'DockingAccess': 'all',
+            'AllowNotorious': True,
+            'FuelLevel': 456,
+            'JumpRangeCurr': 500.0,
+            'JumpRangeMax': 500.0,
+            'PendingDecommission': False,
+            'SpaceUsage': {
+                'TotalCapacity': 25000,
+                'Crew': 680,
+                'Cargo': 715,
+                'CargoSpaceReserved': 21941,
+                'ShipPacks': 0,
+                'ModulePacks': 0,
+                'FreeSpace': 1664
+            },
+            'Finance': {
+                'CarrierBalance': 1997048445,
+                'ReserveBalance': 0,
+                'AvailableBalance': 1824985690,
+                'ReservePercent': 0,
+                'TaxRate_refuel': 8,
+                'TaxRate_repair': 10
+            },
+            'Crew': [{
+                    'CrewRole': 'BlackMarket',
+                    'Activated': False
+                }, {
+                    'CrewRole': 'Captain',
+                    'Activated': True,
+                    'Enabled': True,
+                    'CrewName': 'Loren Mcdowell'
+                }, {
+                    'CrewRole': 'Refuel',
+                    'Activated': True,
+                    'Enabled': True,
+                    'CrewName': 'Marlin Cain'
+                }, {
+                    'CrewRole': 'Repair',
+                    'Activated': True,
+                    'Enabled': True,
+                    'CrewName': 'Jemma Short'
+                }, {
+                    'CrewRole': 'Rearm',
+                    'Activated': False
+                }, {
+                    'CrewRole': 'Commodities',
+                    'Activated': True,
+                    'Enabled': True,
+                    'CrewName': 'Jennifer Cardenas'
+                }, {
+                    'CrewRole': 'VoucherRedemption',
+                    'Activated': False
+                }, {
+                    'CrewRole': 'Exploration',
+                    'Activated': False
+                }, {
+                    'CrewRole': 'Shipyard',
+                    'Activated': False
+                }, {
+                    'CrewRole': 'Outfitting',
+                    'Activated': False
+                }, {
+                    'CrewRole': 'CarrierFuel',
+                    'Activated': True,
+                    'Enabled': True,
+                    'CrewName': 'Jorge Dale'
+                }, {
+                    'CrewRole': 'VistaGenomics',
+                    'Activated': False
+                }, {
+                    'CrewRole': 'PioneerSupplies',
+                    'Activated': False
+                }, {
+                    'CrewRole': 'Bartender',
+                    'Activated': False
+                }
+            ],
+            'ShipPacks': [],
+            'ModulePacks': []
+        }
+        """
+        # Keep track of the call sign for easy lookups later
+        this.carrierCallsign = entry['Callsign']
         
 def cmdr_data(data, is_beta):
     if data.source_host == SERVER_LIVE:
-        logger.info(f'CAPI: {data}')
+        logger.debug(f'CAPI: {data}')
         
 def capi_fleetcarrier(data):
     if data.source_host == SERVER_LIVE:
-        logger.info(f'FC: {data}')
+        logger.debug(f'FC: {data}')
     

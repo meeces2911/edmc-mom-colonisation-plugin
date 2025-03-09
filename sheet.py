@@ -2,227 +2,57 @@ import logging
 import requests
 import time
 import webbrowser
-import urllib
-import os
-import base64
-import hashlib
-import random
+import tkinter as tk
+import json
 
 from config import config, appname
-from protohandler import LinuxProtocolHandler
+from auth import Auth, LocalHTTPServer
 from pathlib import Path
 
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
-class Auth:
-    GOOGLE_AUTH_SERVER = 'https://accounts.google.com/o/oauth2/v2/auth'
-    GOOGLE_TOKEN_SERVER = 'https://oauth2.googleapis.com/token'
-    
-    CLIENT_ID = os.getenv('CLIENT_ID') or '28330765453-6m8337sg9a6m7dtokamos8a30em5v8fr.apps.googleusercontent.com'
-    CLIENT_SECRET = os.getenv('CLIENT_SECRET') or ''
-    SCOPES = os.getenv('SCOPES') or 'https%3A//www.googleapis.com/auth/drive.file'
-    
-    AUTH_TIMEOUT = 30
-    TOKEN_STORE_NAME = 'google_apikeys'
-    
-    def __init__(self, cmdr: str, session: requests.Session) -> None:
-        logger.debug(f'New Auth for {cmdr}')
-        self.cmdr: str = cmdr
-        self.verifier: bytes | None = None
-        self.state: str | None = None
-        self.handler: LinuxProtocolHandler | None = None
-        self.access_token: str | None = None
-        self.requests_session: requests.Session = session
-        self.shutting_down: bool = False
-        
-    def __del__(self) -> None:
-        if self.handler:
-            self.handler.close()
-        
-    def refresh(self) -> None:
-        # Do some stuff with existing tokens...
-        self.verifier = None
-        self.state = None
-        
-        cmdrs = config.get_list('cmdrs', default=[])
-        idx = cmdrs.index(self.cmdr)
-        
-        tokens = config.get_list(self.TOKEN_STORE_NAME, default=[])
-        tokens += [''] * (len(cmdrs) - len(tokens))
-        
-        if tokens[idx]:
-            # We have an existing refresh_token, lets try and use it
-            logger.debug('Refresh token found for cmdr')
-            
-            body = {
-                'grant_type': 'refresh_token',
-                'client_id': self.CLIENT_ID,
-                'client_secret': self.CLIENT_SECRET,
-                'refresh_token': tokens[idx]                
-            }
-            logger.debug(f'Refresh token exchange body: {body}')
-            
-            res = self.requests_session.post(
-                self.GOOGLE_TOKEN_SERVER,
-                data=body,
-                timeout=self.AUTH_TIMEOUT
-            )
-            resBodyJson = res.json()
-            logger.debug(f'Response: {res}{resBodyJson}')
-            
-            if res.status_code != requests.codes.ok:
-                logger.error(f'Bad token response: {res}{resBodyJson}')
-            else:
-                # Google doesn't seem to return new refresh tokens in their reply here :(
-                # so, best we can do is just use the new access token
-                
-                self.access_token = resBodyJson.get('access_token')
-                return None
-        
-        logger.info("Google API: New auth request")
-        
-        self.handler = LinuxProtocolHandler(logger, self.CLIENT_ID, self.SCOPES)
-        self.handler.start()
-        
-        # similar to the CAPI, lets create some entropy
-        v = random.SystemRandom().getrandbits(8 * 32)
-        self.verifier = self.base64_url_encode(v.to_bytes(32, byteorder='big')).encode('utf-8')
-        s = random.SystemRandom().getrandbits(8 * 32)
-        self.state = self.base64_url_encode(s.to_bytes(32, byteorder='big'))
-        challenge = self.base64_url_encode(hashlib.sha256(self.verifier).digest())
-        
-        authuri = (
-            f'{self.GOOGLE_AUTH_SERVER}?response_type=code'
-            f'&client_id={self.CLIENT_ID}'
-            f'&redirect_uri={self.handler.redirect}'
-            f'&scope={self.SCOPES}'
-            f'&state={self.state}'
-            f'&code_challenge={challenge}'
-            f'&code_challenge_method=S256'
-        )
-        logger.debug(f'Browser opening {authuri}')
-        
-        webbrowser.open(authuri)
-        while not self.handler.response:
-            # spin
-            time.sleep(1 / 10)
-            
-            # TODO: how does python properly handle timeouts
-            
-            # EDMC shutdown, bail
-            if self.shutting_down:
-                logger.warning('Auth: Refresh - aborting, shutting down')
-                self.handler.close()
-                self.handler = None
-                return None
-        
-        self.handler.close()
-        self.auth(self.handler.response)
-        self.handler = None
-        
-        return None
-        
-    def auth(self, payload: str) -> None:
-        """ Now exchange the auth token with an access_request one """
-        # will come back with something like /auth?state=pOiorvXGIISkV0xXGOyKOmH4_oRqfV1ReaIXEAptVrc&code=4/0AQSTgQGARr4HjUmniyldb5X6uWI5ChkrAsE6h5xJDzmJf55xaPmDAF2UmRb0MaM-kYW3Cw&scope=https://www.googleapis.com/auth/drive.file
-        logger.debug(f'auth callback called with {payload}')
-        
-        if '?' not in payload:
-            logger.error(f'Google API returned invalid response: {payload}')
-            raise CredentialsError('malformed payload')
-            
-        data = urllib.parse.parse_qs(payload[(payload.index('?') + 1):])
-        
-        # First, check our state string is valid
-        if not self.state or not data.get('state') or data['state'][0] != self.state:
-            logger.error(f'Bad state. Response invalid or expired.\nExpected: {self.state}\nActual: {data["state"][0]}\n{payload}')
-            raise CredentialsError('bad state')
-            
-        # States good, ok, did we actually get a code back
-        if not data.get('code'):
-            logger.error(f'No Code token.\n{payload}')
-            raise CredentialsError('no code token')
-            
-        # all good, token exchange time
-        body = {
-            'client_id': self.CLIENT_ID,
-            'client_secret': self.CLIENT_SECRET,
-            'code': data['code'][0],
-            'code_verifier': self.verifier,
-            'grant_type': 'authorization_code',
-            'redirect_uri': self.handler.redirect
-        }
-        logger.debug(f'Token exchange body: {body}')
-        
-        res = self.requests_session.post(
-            self.GOOGLE_TOKEN_SERVER,
-            data=body,
-            timeout=self.AUTH_TIMEOUT
-        )
-        resBodyJson = res.json()
-        logger.debug(f'Response: {res}{resBodyJson}')
-        
-        if res.status_code != requests.codes.ok:
-            logger.error(f'Bad token response: {res}{resBodyJson}')
-            res.raise_for_status()
-            
-        logger.info("Google Auth: successfully got access token")
-        cmdrs = config.get_list('cmdrs', default=[])
-        idx = cmdrs.index(self.cmdr)
-        tokens = config.get_list(self.TOKEN_STORE_NAME, default=[])
-        tokens += [''] * (len(cmdrs) - len(tokens))
-        tokens[idx] = resBodyJson.get('refresh_token', '')
-        config.set(self.TOKEN_STORE_NAME, tokens)
-        config.save()
-        
-        self.state = None
-        self.verifier = None
-        
-        self.access_token = resBodyJson.get('access_token')    
-    
-    def base64_url_encode(self, text: bytes) -> str:
-        """Base64 encode text for URL."""
-        return base64.urlsafe_b64encode(text).decode().replace('=', '')
-
-class CredentialsError(Exception):
-    """Exception Class for OAuth Credentials error"""
-
-    def __init__(self, *args) -> None:
-        self.args = args
-        if not args:
-            self.args = ('Error: Invalid Credentials',)
-
 class Sheet:
     BASE_SHEET_END_POINT = 'https://sheets.googleapis.com'
     SPREADSHEET_ID = '1dB8Zty_tGoEHFjXQh5kfOeEfL_tsByRyZI8d_sY--4M'
 
-    def __init__(self, _logger: logging.Logger, auth: Auth, session: requests.Session):
+    LOOKUP_CARRIER_LOCATION = 'Carrier Location'
+    LOOKUP_CARRIER_BUY_ORDERS = 'Carrier Buy Orders'
+    LOOKUP_CARRIER_JUMP_LOC = 'Carrier Jump Location'
+    LOOKUP_SCS_SHEET_NAME = 'SCS Sheet'
+
+    def __init__(self, auth: Auth, session: requests.Session):
         self.auth: Auth = auth
-        self.logger: logging.Logger = _logger
         self.requests_session: requests.Session = session
-        self.shutting_down: bool = False
         self.sheets: dict[str, int] = {}
 
-        self.configSheetName = config.get_str('configSheetName', default='EDMC Plugin Settings')
+        self.killswitches: dict[str, str] = {}
+        self.carrierTabNames: dict[str, str] = {}
+        self.marketUpdatesSetBy: dict[str, dict] = {}
+        self.lookupRanges: dict[str, str] = {}
 
-        self.check_and_authorise_access_to_spreadsheet()
+        if not config.shutting_down:
+            # If shutdown is called during the intial stages of auth, we won't have been initialised yet
+            # So make sure we don't call config.get_str, as that blocks if config.shutting_down is true
+            self.configSheetName = tk.StringVar(value=config.get_str('configSheetName', default='EDMC Plugin Settings'))
+            
+            self.check_and_authorise_access_to_spreadsheet()
 
     def check_and_authorise_access_to_spreadsheet(self) -> any:
         """Checks and (Re)Authorises access to the spreadsheet. Returns the current sheets"""
-        self.logger.debug('Checking access to spreadsheet')
+        logger.debug('Checking access to spreadsheet')
         res = self.requests_session.get(f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}?fields=sheets/properties(sheetId,title)')
         sheet_list_json: any = res.json()
-        self.logger.debug(f'{res}{sheet_list_json}')
+        logger.debug(f'{res}{sheet_list_json}')
 
         if res.status_code != requests.codes.ok:
             # Need to authorise this specific file
-            self.logger.debug('404 - access not granted yet, showing picker')
-            self.handler = LinuxProtocolHandler(self.logger, self.CLIENT_ID, self.SCOPES, self.access_token)
+            logger.debug('404 - access not granted yet, showing picker')
+            self.handler = LocalHTTPServer()
             self.handler.start()
             
             webbrowser.open(self.handler.gpickerEndpoint)
-            self.logger.info('Waiting for auth response')
+            logger.info('Waiting for auth response')
             while not self.handler.response:
                 # spin
                 time.sleep(1 / 10)
@@ -230,14 +60,14 @@ class Sheet:
                 # TODO: how does python properly handle timeouts
                 
                 # EDMC shutdown, bail
-                if self.shutting_down:
-                    self.logger.warning('Sheet Authorise - aborting, shutting down')
+                if config.shutting_down:
+                    logger.warning('Sheet Authorise - aborting, shutting down')
                     self.handler.close()
                     self.handler = None
                     return None
             
             self.handler.close()
-            self.logger.debug(f'response: {self.handler.response}')
+            logger.debug(f'response: {self.handler.response}')
             
             # For now, lets ignore the response entirely and use our known values instead
             res = self.requests_session.get(f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}?fields=sheets/properties(sheetId,title)')
@@ -257,27 +87,293 @@ class Sheet:
     def fetch_data(self, query: str) -> any:
         """Actually send a request to Google"""
         base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values/{query}'
+        logger.debug(f'Sending request to GET {base_url}')
         try:
-            res = self.requests_session.get(base_url)
-            if res.status_code == requests.codes.ok:
-                return res.json()
-            else:
+            token_refresh_attempted = False
+            while True:
+                res = self.requests_session.get(base_url)
+                if res.status_code == requests.codes.ok:
+                    return res.json()
+                elif res.status_code == requests.codes.unauthorized:
+                    if not token_refresh_attempted:
+                        token_refresh_attempted = True
+                        self.auth.refresh()
+                        continue
+                else:
+                    logger.error(f'{res}{res.json()}')
                 return {}
         except:
             return {}
 
+    def insert_data(self, range: str, body: dict) -> None:
+        """Add/update some data in the spreadsheet"""
+        # POST https://sheets.googleapis.com/v4/spreadsheets/SPREADSHEET_ID/values/Sheet1!A1:E1:append?valueInputOption=VALUE_INPUT_OPTION
+        # Append adds new rows to the end of the given range
+        base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values/{range}:append?valueInputOption=USER_ENTERED'
+        logger.debug(f'Sending request to POST {base_url}')
+        logger.debug(json.dumps(body))
+        
+        token_refresh_attempted = False
+        while True:
+            logger.debug('sending request...')
+            logger.debug(self.requests_session.headers)
+            res = self.requests_session.post(base_url, json=body)
+            logger.debug(f'{res}{res.json()}')
+            if res.status_code == requests.codes.ok:
+                return res.json()
+            elif res.status_code == requests.codes.unauthorized:
+                if not token_refresh_attempted:
+                    token_refresh_attempted = True
+                    self.auth.refresh()
+                    continue
+            else:
+                logger.error(f'{res}{res.json()}')
+            return None
+
+    def update_data(self, range: str, body: dict) -> None:
+        """Updates existing data in the spreadsheet"""
+        # PUT https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}/values/{range}?valueInputOption=VALUE_INPUT_OPTION
+        base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values/{range}?valueInputOption=USER_ENTERED'
+        logger.debug(f'Sending request to PUT {base_url}')
+        logger.debug(json.dumps(body))
+
+        token_refresh_attempted = False
+        while True:
+            logger.debug('sending request...')
+            logger.debug(self.requests_session.headers)
+            res = self.requests_session.put(base_url, json=body)
+            logger.debug(f'{res}{res.json()}')
+            if res.status_code == requests.codes.ok:
+                return res.json()
+            elif res.status_code == requests.codes.unauthorized:
+                if not token_refresh_attempted:
+                    token_refresh_attempted = True
+                    self.auth.refresh()
+                    continue
+            else:
+                logger.error(f'{res}{res.json()}')
+            return None
 
     def populate_initial_settings(self) -> None:
         # Lets get everything on the settings sheet and wade through it
         # {{BASE_END_POINT}}/v4/spreadsheets/{{SPREADSHEET_ID}}/values/'EDMC Plugin Testing'!A:E
+        logger.debug('Fetching latest settings')
+        
         sheet = f"'{self.configSheetName.get()}'"
-        query = 'A:B'
+        query = 'A:C'
         data = self.fetch_data(f'{sheet}!{query}')
         logger.debug(data)
+        
+        # TODO: Error handling
+
+        self.killswitches = {}
+        self.carrierTabNames = {}
+        self.marketUpdatesSetBy = {}
+        self.lookupRanges = {}
+
+        section_killswitches = False
+        section_carriers = False
+        section_market_updates = False
+        section_lookups = False
+
+        for row in data.get('values'):
+            logger.debug(row)
+
+            if len(row) == 0:
+                # Blank line, skip
+                section_killswitches = False
+                section_carriers = False
+                section_market_updates = False
+                section_lookups = False
+                continue
+            elif row[0] == 'Killswitches':
+                section_killswitches = True
+                continue
+            elif row[0] == 'Carriers':
+                section_carriers = True
+                continue
+            elif row[0] == 'Markets':
+                section_market_updates = True
+                continue
+            elif row[0] == 'Lookups':
+                section_lookups = True
+                continue
+
+            if section_killswitches:
+                self.killswitches[row[0].lower()] = row[1].lower()
+                continue
+            elif section_carriers:
+                self.carrierTabNames[row[1]] = row[2]
+                continue
+            elif section_market_updates:
+                self.marketUpdatesSetBy[row[0]] = {
+                    'setByOwner': row[1] == 'TRUE'
+                }
+                continue
+            elif section_lookups:
+                self.lookupRanges[row[0]] = row[1]
+                continue
+
+        self.killswitches['last updated'] = time.time()
+        logger.debug(self.killswitches)
+        logger.debug(self.carrierTabNames)
+        logger.debug(self.marketUpdatesSetBy)
+        logger.debug(self.lookupRanges)
 
     def sheet_names(self) -> list[str]:
         if self.sheets:
             return list(self.sheets.keys())
         return []
 
-      
+    def commodity_type_name_to_dropdown(self, commodity: str) -> str:
+        """Returns the specific commodity name that matches the one in the spreadsheet"""
+        if commodity == 'ceramiccomposites':
+            return 'Ceramic Composites'
+        elif commodity == 'cmmcomposite':
+            return 'CMM Composite'
+        elif commodity == 'computercomponents':
+            return 'Computer Components'
+        elif commodity == 'foodcartridges':
+            return 'Food Cartridges'
+        elif commodity == 'fruitandvegetables':
+            return 'Fruit and Vedge'
+        elif commodity == 'ceramicinsulatingmembrane' or commodity == 'insulatingmembrane':
+            return 'Insulating Membrane'
+        elif commodity == 'liquidoxygen':
+            return 'Liquid Oxygen'
+        elif commodity == 'medicaldiagnosticequipment':
+            return 'Medical Diagnostic Equipment'
+        elif commodity == 'nonlethalweapons':
+            return 'Non-Lethal Weapons'
+        elif commodity == 'powergenerators':
+            return 'Power Generators'
+        elif commodity == 'waterpurifiers':
+            return 'Water Purifiers'
+        
+        return commodity.title()    # Convert to Camelcase to match the spreadsheet a bit better
+
+    def add_to_carrier_sheet(self, sheet, cmdr, commodity: str, amount: int) -> None:
+        """Updates the carrier sheet with some cargo"""
+        logger.debug('Building Carrier Sheet Message')
+        range = f"'{sheet}'!A:A"
+        body = {
+            'range': range,
+            'majorDimension': 'ROWS',
+            'values': [
+                [
+                    cmdr,
+                    self.commodity_type_name_to_dropdown(commodity),
+                    amount
+                ]
+            ]
+        }
+        logger.debug(body)
+        self.insert_data(range, body)
+    
+    def update_carrier_location(self, sheet, system: str) -> None:
+        """Update the carrier sheet with its current location"""
+        logger.debug('Building Carrier Location Message')
+        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_LOCATION] or 'G1'}"
+        body = {
+            'range': range,
+            'majorDimension': 'ROWS',
+            'values': [
+                [
+                    system
+                ]
+            ]
+        }
+        logger.debug(body)
+        self.update_data(range, body)
+
+    def update_carrier_jump_location(self, sheet: str, system, departTime: str | None) -> None:
+        """Update the carrier sheet with its planned jump"""
+        logger.debug("Building Carrier Jump Message")
+        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_JUMP_LOC] or 'G2'}"
+        body = {
+            'range': range,
+            'majorDimension': 'ROWS',
+            'values': [
+                [
+                    system or '',
+                    departTime or ''
+                ]
+            ]
+        }
+        logger.debug(body)
+        self.update_data(range, body)
+
+    def update_carrier_market(self, sheet, marketData) -> None:
+        """Update the current Buy orders if they are out of date"""
+
+        # TODO: Finish this after basic functionality
+
+        # First, check if the market was last set by the carrier owner via a 'CarrierTradeOrder' event
+
+    def update_carrier_market_entry(self, sheet, station, commodity: str, amount: int) -> None:
+        """Update the current Buy order for the given commodity"""
+        spreadsheetCommodity = self.commodity_type_name_to_dropdown(commodity)
+        logger.debug(f"Updating {spreadsheetCommodity} to {amount}")
+
+        # Find our commodity in the list
+        buyOrders = self.fetch_data(f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_BUY_ORDERS] or 'F3:H22'}")
+        logger.debug(f'Old: {buyOrders}')
+        for order in buyOrders['values']:
+            # Make sure we don't overwrite the Demand column
+            order[2] = None
+
+            if order[0] == spreadsheetCommodity:
+                if amount > 0:
+                    order[1] = amount
+                else:
+                    order[1] = ''
+
+        logger.debug(f'New: {buyOrders}')
+        self.update_data(buyOrders['range'], buyOrders)
+
+        # Also record that it was updated by the carrier owner
+        configSheet = f"'{self.configSheetName.get()}'"
+        marketSettings = self.fetch_data(f'{configSheet}!A18:B{18 + len(self.marketUpdatesSetBy)}')
+        logger.debug(json.dumps(marketSettings))
+        
+        if self.marketUpdatesSetBy.get(station):
+            for setting in marketSettings['values']:
+                if setting[0] == station:
+                    setting[1] = 'TRUE'
+
+            logger.debug(f'New Markets settings: {marketSettings}')
+            self.update_data(marketSettings['range'], marketSettings)
+        else:
+            logger.debug(f'Unknown Market settings for ({station}), adding...')
+            range = f'{configSheet}!A18'
+            body = {
+                'range': range,
+                'majorDimension': 'ROWS',
+                'values': [
+                    [
+                        station,
+                        'TRUE'
+                    ]
+                ]
+            }
+            self.insert_data(range, body)
+        
+    def add_to_scs_sheet(self, cmdr, system, commodity: str, amount: int) -> None:
+        """Updates the SCS sheet with some cargo"""
+        logger.debug('Building SCS Sheet Message')
+        sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
+        range = f"'{sheet}'!A:A"
+        body = {
+            'range': range,
+            'majorDimension': 'ROWS',
+            'values': [
+                [
+                    #cmdr       # This isn't currently recorded, but needs to be
+                    self.commodity_type_name_to_dropdown(commodity),
+                    system.upper(),
+                    amount
+                ]
+            ]
+        }
+        logger.debug(body)
+        self.insert_data(range, body)
