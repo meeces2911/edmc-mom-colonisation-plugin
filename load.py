@@ -30,7 +30,7 @@ from auth import Auth
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
-VERSION = '1.0.1'
+VERSION = '1.0.2'
 
 KILLSWITCH_CMDR_UPDATE = 'cmdr info update'
 KILLSWITCH_CARRIER_BUYSELL_ORDER = 'carrier buysell order'
