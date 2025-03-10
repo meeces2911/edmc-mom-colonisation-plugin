@@ -1,6 +1,7 @@
 import logging
 import requests
 import time
+import datetime
 import webbrowser
 import tkinter as tk
 import json
@@ -20,6 +21,8 @@ class Sheet:
     LOOKUP_CARRIER_BUY_ORDERS = 'Carrier Buy Orders'
     LOOKUP_CARRIER_JUMP_LOC = 'Carrier Jump Location'
     LOOKUP_SCS_SHEET_NAME = 'SCS Sheet'
+    LOOKUP_SYSTEMINFO_SHEET_NAME = 'System Info Sheet'
+    LOOKUP_CMDR_INFO = 'CMDR Info'
 
     def __init__(self, auth: Auth, session: requests.Session):
         self.auth: Auth = auth
@@ -91,7 +94,7 @@ class Sheet:
         try:
             token_refresh_attempted = False
             while True:
-                res = self.requests_session.get(base_url)
+                res = self.requests_session.get(base_url, timeout=10)
                 if res.status_code == requests.codes.ok:
                     return res.json()
                 elif res.status_code == requests.codes.unauthorized:
@@ -117,7 +120,7 @@ class Sheet:
         while True:
             logger.debug('sending request...')
             logger.debug(self.requests_session.headers)
-            res = self.requests_session.post(base_url, json=body)
+            res = self.requests_session.post(base_url, json=body, timeout=10)
             logger.debug(f'{res}{res.json()}')
             if res.status_code == requests.codes.ok:
                 return res.json()
@@ -141,7 +144,7 @@ class Sheet:
         while True:
             logger.debug('sending request...')
             logger.debug(self.requests_session.headers)
-            res = self.requests_session.put(base_url, json=body)
+            res = self.requests_session.put(base_url, json=body, timeout=10)
             logger.debug(f'{res}{res.json()}')
             if res.status_code == requests.codes.ok:
                 return res.json()
@@ -252,7 +255,7 @@ class Sheet:
         
         return commodity.title()    # Convert to Camelcase to match the spreadsheet a bit better
 
-    def add_to_carrier_sheet(self, sheet, cmdr, commodity: str, amount: int) -> None:
+    def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int) -> None:
         """Updates the carrier sheet with some cargo"""
         logger.debug('Building Carrier Sheet Message')
         range = f"'{sheet}'!A:A"
@@ -270,7 +273,7 @@ class Sheet:
         logger.debug(body)
         self.insert_data(range, body)
     
-    def update_carrier_location(self, sheet, system: str) -> None:
+    def update_carrier_location(self, sheet: str, system: str) -> None:
         """Update the carrier sheet with its current location"""
         logger.debug('Building Carrier Location Message')
         range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_LOCATION] or 'G1'}"
@@ -286,7 +289,7 @@ class Sheet:
         logger.debug(body)
         self.update_data(range, body)
 
-    def update_carrier_jump_location(self, sheet: str, system, departTime: str | None) -> None:
+    def update_carrier_jump_location(self, sheet: str, system: str, departTime: str | None) -> None:
         """Update the carrier sheet with its planned jump"""
         logger.debug("Building Carrier Jump Message")
         range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_JUMP_LOC] or 'G2'}"
@@ -303,14 +306,14 @@ class Sheet:
         logger.debug(body)
         self.update_data(range, body)
 
-    def update_carrier_market(self, sheet, marketData) -> None:
+    def update_carrier_market(self, sheet: str, marketData: dict) -> None:
         """Update the current Buy orders if they are out of date"""
 
         # TODO: Finish this after basic functionality
 
         # First, check if the market was last set by the carrier owner via a 'CarrierTradeOrder' event
 
-    def update_carrier_market_entry(self, sheet, station, commodity: str, amount: int) -> None:
+    def update_carrier_market_entry(self, sheet: str, station: str, commodity: str, amount: int) -> None:
         """Update the current Buy order for the given commodity"""
         spreadsheetCommodity = self.commodity_type_name_to_dropdown(commodity)
         logger.debug(f"Updating {spreadsheetCommodity} to {amount}")
@@ -327,6 +330,7 @@ class Sheet:
                     order[1] = amount
                 else:
                     order[1] = ''
+                break
 
         logger.debug(f'New: {buyOrders}')
         self.update_data(buyOrders['range'], buyOrders)
@@ -358,7 +362,7 @@ class Sheet:
             }
             self.insert_data(range, body)
         
-    def add_to_scs_sheet(self, cmdr, system, commodity: str, amount: int) -> None:
+    def add_to_scs_sheet(self, cmdr: str, system: str, commodity: str, amount: int) -> None:
         """Updates the SCS sheet with some cargo"""
         logger.debug('Building SCS Sheet Message')
         sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
@@ -377,3 +381,72 @@ class Sheet:
         }
         logger.debug(body)
         self.insert_data(range, body)
+
+    def record_plugin_usage(self, cmdr: str, version: str) -> None:
+        """Updates the Plugin sheet with usage info"""
+        logger.debug('Building Plugin Usage Message')
+        sheet = f"'{self.configSheetName.get()}'"
+        range = f'{sheet}!E:G'
+        data = self.fetch_data(range)
+        logger.debug(data)
+        
+        setRow = False
+        for row in data['values']:
+            if row[0] == cmdr:
+                row[1] = version
+                row[2] = datetime.datetime.now().replace(microsecond=0).isoformat()
+                setRow = True
+                break
+        
+        if setRow:
+            logger.debug(f'New Plugin Usage: {data}')
+            self.update_data(data['range'], data)
+        else:
+            body = {
+                'range': range,
+                'majorDimension': 'ROWS',
+                'values': [
+                    [
+                        cmdr,
+                        version,
+                        datetime.datetime.now().replace(microsecond=0).isoformat()
+                    ]
+                ]
+            }
+            self.insert_data(range, body)
+
+    def update_cmdr_attributes(self, cmdr: str, cargoCapacity: int) -> None:
+        """Updates anything we wnat to track about the current CMDR"""
+        logger.debug('Building CMDR Update Message')
+        sheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
+        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'G1'}"
+        data = self.fetch_data(range)
+        logger.debug(data)
+
+        setRow = False
+        for row in data['values']:
+            # Skip blank rows
+            if len(row) == 0:
+                continue
+
+            if row[0] == cmdr:
+                row[1] = cargoCapacity
+                setRow = True
+                break
+
+        if setRow:
+            self.update_data(data['range'], data)
+        else:
+            logger.debug('CMDR not found, adding to table')
+            body = {
+                'range': range,
+                'majorDimension': 'ROWS',
+                'values': [
+                    [
+                        cmdr,
+                        cargoCapacity,
+                        None # Cap Ship
+                    ]
+                ]
+            }
+            self.insert_data(range, body)

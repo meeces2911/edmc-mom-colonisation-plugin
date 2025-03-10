@@ -30,7 +30,15 @@ from auth import Auth
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
-VERSION = '1.0.0'
+VERSION = '1.0.1'
+
+KILLSWITCH_CMDR_UPDATE = 'cmdr info update'
+KILLSWITCH_CARRIER_BUYSELL_ORDER = 'carrier buysell order'
+KILLSWITCH_CARRIER_LOC = 'carrier location'
+KILLSWITCH_CARRIER_JUMP = 'carrier jump'
+KILLSWITCH_CARRIER_MARKET = 'carrier market full'
+KILLSWITCH_SCS_SELL = 'scs sell commodity'
+KILLSWITCH_CMDR_BUYSELL = 'cmdr buysell commodity'
 
 # Probably overkill, but lets start with a sensible framework like how the EDSM plugin does it
 class This:
@@ -43,6 +51,7 @@ class This:
         self.queue: SimpleQueue[PushRequest] = SimpleQueue()
         
         self.enabled: bool = True
+        self.killswitches: dict[str, str] = {}
         
         self.requests_session : requests.Session = requests.Session()
         self.requests_session.headers['User-Agent'] = user_agent
@@ -52,6 +61,7 @@ class This:
 
         self.currentCargo: dict | None = None
         self.carrierCallsign: str | None = None
+        self.cargoCapacity: int = 0
 
         self.clearAuthButton: tk.Button | None = None
         self.settingsClosed: bool = False
@@ -71,6 +81,7 @@ class PushRequest:
     TYPE_CARRIER_BUY_SELL_ORDER_UPDATE: int = 5
     TYPE_CARRIER_JUMP: int = 6
     TYPE_SCS_SELL: int = 7
+    TYPE_CMDR_UPDATE: int = 8
 
     def __init__(self, cmdr, station: str, reqType: int, data: dict):
         self.cmdr = cmdr
@@ -196,7 +207,11 @@ def worker() -> None:
     
     # Request some initial settings
     this.sheet.populate_initial_settings()
+    this.killswitches = this.sheet.killswitches
     
+    # Record the fact that we're using the plugin
+    this.sheet.record_plugin_usage(monitor.cmdr, VERSION)
+
     # Then start the main loop
     logger.debug("Startup complete, entering main loop")
     while True:
@@ -237,24 +252,27 @@ def worker() -> None:
 
 def process_kill_siwtches() -> bool:
     """Go through all the killswitches and if any match, return True to suspend the plugin"""
-    switches = this.sheet.killswitches
     
-    if len(switches) == 0:
+    if len(this.killswitches) == 0:
         return False
     
-    if 'last updated' in switches:
+    if 'last updated' in this.killswitches:
         #logger.debug('Checking if update required')
-        if time.localtime() > time.localtime(float(switches.get('last updated')) + 59):
+        if time.localtime() > time.localtime(float(this.killswitches.get('last updated')) + 59):
             this.sheet.populate_initial_settings()
+            this.killswitches = this.sheet.killswitches
 
-    if 'enabled' in switches:
-        if not switches.get('enabled') == 'true':
+    if 'enabled' in this.killswitches:
+        if not this.killswitches.get('enabled') == 'true':
             logger.warning('Killswitch: Enabled = False')
+            this.enabled = False
             return True
+        else:
+            this.enabled = True
         
-    if 'minimum version' in switches:
-        if semantic_version.Version(VERSION) < semantic_version.Version(switches.get('minimum version')):
-            logger.warning(f'Killswitch: Minimum Version ({switches.get("minimum version")}) is higher than us')
+    if 'minimum version' in this.killswitches:
+        if semantic_version.Version(VERSION) < semantic_version.Version(this.killswitches.get('minimum version')):
+            logger.warning(f'Killswitch: Minimum Version ({this.killswitches.get("minimum version")}) is higher than us')
             return True
         
     return False
@@ -263,23 +281,39 @@ def process_item(item: PushRequest) -> None:
     logger.debug(f'Processing item: [{item.type}] {item.data}')
     sheetName = this.sheet.carrierTabNames.get(item.station)
     if item.type == PushRequest.TYPE_CMDR_SELL:
-        logger.debug('Processing CMDR Sell request')
+        logger.info('Processing CMDR Sell request')
+        if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
+            logger.warning('DISABLED by killswitch, ignoring')
+            return
         commodity = item.data['Type']
         amount = int(item.data['Count'])
         this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount)
     elif item.type == PushRequest.TYPE_CARRIER_LOC_UPDATE:
-        logger.debug('Processing Carrier Location update')
+        logger.info('Processing Carrier Location update')
+        if this.killswitches.get(KILLSWITCH_CARRIER_LOC, 'true') != 'true':
+            logger.warning('DISABLED by killswitch, ignoring')
+            return
         this.sheet.update_carrier_location(sheetName, item.data)
     elif item.type == PushRequest.TYPE_CARRIER_MARKET_UPDATE:
-        logger.debug('Processing Carrier Market update')
+        logger.info('Processing Carrier Market update')
+        if this.killswitches.get(KILLSWITCH_CARRIER_MARKET, 'true') != 'true':
+            logger.warning('DISABLED by killswitch, ignoring')
+            return
         this.sheet.update_carrier_market(sheetName, item.data)
     elif item.type == PushRequest.TYPE_CMDR_BUY:
-        logger.debug('Processing CMDR Buy request')
+        logger.info('Processing CMDR Buy request')
+        if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
+            logger.warning('DISABLED by killswitch, ignoring')
+            return
         commodity = item.data['Type']
         amount = int(item.data['Count']) * -1   # We're removing from the carrier
         this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount)
     elif item.type == PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE:
-        logger.debug('Processing Carrier Buy/Sell Order update')
+        logger.info('Processing Carrier Buy/Sell Order update')
+        logger.debug(this.killswitches)
+        if this.killswitches.get(KILLSWITCH_CARRIER_BUYSELL_ORDER, 'true') != 'true':
+            logger.warning('DISABLED by killswitch, ignoring')
+            return
         commodity = item.data['Commodity']
         amount = 0
         # Currently, only track Buy orders
@@ -287,13 +321,25 @@ def process_item(item: PushRequest) -> None:
             amount = int(item.data['PurchaseOrder'])
         this.sheet.update_carrier_market_entry(sheetName, item.station, commodity, amount)
     elif item.type == PushRequest.TYPE_CARRIER_JUMP:
-        logger.debug('PRocessing Carrier Jump update')
+        logger.info('Processing Carrier Jump update')
+        if this.killswitches.get(KILLSWITCH_CARRIER_JUMP, 'true') != 'true':
+            logger.warning('DISABLED by killswitch, ignoring')
+            return
         destination = item.data.get('Body')
         departTime = item.data.get('DepartureTime')
         this.sheet.update_carrier_jump_location(sheetName, destination, departTime)
     elif item.type == PushRequest.TYPE_SCS_SELL:
-        logger.debug('Processing SCS Sell request')
+        logger.info('Processing SCS Sell request')
+        if this.killswitches.get(KILLSWITCH_SCS_SELL, 'true') != 'true':
+            logger.warning('DISABLED by killswitch, ignoring')
+            return
         process_scs_market_updates(item.cmdr, item.station, item.data)
+    elif item.type == PushRequest.TYPE_CMDR_UPDATE:
+        logger.info('Processing CMDR Update')
+        if this.killswitches.get(KILLSWITCH_CMDR_UPDATE, 'true') != 'true':
+            logger.warning('DISABLED by killswitch, ignoring')
+            return
+        this.sheet.update_cmdr_attributes(item.cmdr, this.cargoCapacity)
 
 def process_scs_market_updates(cmdr, station: str, data: dict) -> None:
     """Because SCS transfers don't provide the same journal info, we'll have to get a bit more creative"""
@@ -316,7 +362,7 @@ def process_scs_market_updates(cmdr, station: str, data: dict) -> None:
                 this.sheet.add_to_scs_sheet(cmdr, station, cargoItem, oldAmount - newAmount)    # Yes, this is backwards, but we want a positive amount
 
 def journal_entry(cmdr, is_beta, system, station, entry, state):
-    logger.info(entry['event'])
+    logger.info(entry['event'] + ' for ' + (station or '<unknown>'))
     logger.info(f'Entry: {entry}')
     logger.info(f'State: {state}')
     if entry['event'] == 'StartUp':
@@ -340,6 +386,8 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
         else:
             logger.info(f'StartUp: Docked at {station}')
         this.currentCargo = state['Cargo']
+        this.cargoCapacity = state['CargoCapacity']
+        this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_UPDATE, None))
     elif entry['event'] == 'Location':
         logger.info(f'Location: In system {system}')
         if station is None:
@@ -355,6 +403,11 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
          # Update the carrier location
         if station in this.sheet.carrierTabNames.keys():
             this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_LOC_UPDATE, system))
+
+        # Update cargo capacity if its changed (There might be a better event for this)
+        if this.cargoCapacity != state['CargoCapacity']:
+            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_UPDATE, None))
+        this.cargoCapacity = state['CargoCapacity']
 
     elif entry['event'] == 'Undocked':
          this.currentCargo = None
@@ -455,9 +508,9 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             "CancelTrade": true
         }
         """
-        if station in this.sheet.carrierTabNames.keys():
-            logger.debug('Station known, creating queue entry')
-            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE, entry))
+        if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
+            logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
+            this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE, entry))
     elif entry['event'] == 'CarrierJumpRequest' or entry['event'] == 'CarrierJumpCancelled':
         """
         {
@@ -472,7 +525,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
         }
         """
         if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
-            logger.debug('Station known, creating queue entry')
+            logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
             this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
     elif entry['event'] == 'CarrierStats':
         """
