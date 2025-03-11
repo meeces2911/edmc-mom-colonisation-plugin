@@ -362,7 +362,7 @@ def process_scs_market_updates(cmdr, station: str, data: dict) -> None:
                 this.sheet.add_to_scs_sheet(cmdr, station, cargoItem, oldAmount - newAmount)    # Yes, this is backwards, but we want a positive amount
 
 def journal_entry(cmdr, is_beta, system, station, entry, state):
-    logger.info(entry['event'] + ' for ' + (station or '<unknown>'))
+    logger.info(entry['event'] + ' at ' + (station or '<unknown>'))
     logger.info(f'Entry: {entry}')
     logger.info(f'State: {state}')
     if entry['event'] == 'StartUp':
@@ -524,6 +524,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             "DepartureTime": "2025-03-09T03:36:10Z"
         }
         """
+        logger.debug(f'Carrier Jump for {this.carrierCallsign}')
         if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
             logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
             this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))

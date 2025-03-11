@@ -25,7 +25,7 @@ GOOGLE_AUTH_SERVER = 'https://accounts.google.com/o/oauth2/v2/auth'
 GOOGLE_TOKEN_SERVER = 'https://oauth2.googleapis.com/token'
 
 ## GPicker
-API_KEY = ''
+API_KEY = os.getenv('API_KEY') or ''
 APP_ID = '28330765453'
 
 plugin_name = Path(__file__).resolve().parent.name
