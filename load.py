@@ -20,7 +20,7 @@ import json
 
 import myNotebook as nb
 from config import config, appname, appversion, user_agent
-from companion import CAPIData, SERVER_LIVE
+from companion import CAPIData, SERVER_LIVE, capi_fleetcarrier_query_cooldown, session as csession
 from ttkHyperlinkLabel import HyperlinkLabel
 from prefs import AutoInc
 
@@ -31,6 +31,7 @@ plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
 VERSION = '1.0.2'
+_CAPI_RESPONSE_TK_EVENT_NAME = '<<CAPIResponse>>'
 
 KILLSWITCH_CMDR_UPDATE = 'cmdr info update'
 KILLSWITCH_CARRIER_BUYSELL_ORDER = 'carrier buysell order'
@@ -39,6 +40,7 @@ KILLSWITCH_CARRIER_JUMP = 'carrier jump'
 KILLSWITCH_CARRIER_MARKET = 'carrier market full'
 KILLSWITCH_SCS_SELL = 'scs sell commodity'
 KILLSWITCH_CMDR_BUYSELL = 'cmdr buysell commodity'
+KILLSWITCH_CARRIER_TRANSFER = 'carrier transfer'
 
 # Probably overkill, but lets start with a sensible framework like how the EDSM plugin does it
 class This:
@@ -66,6 +68,11 @@ class This:
         self.clearAuthButton: tk.Button | None = None
         self.settingsClosed: bool = False
 
+        self.carrierAPIEnabled: tk.BooleanVar = tk.BooleanVar(value=config.get_bool('capi_fleetcarrier', default=False))
+        self.lastCarrierQueryTime: tk.IntVar = tk.IntVar(value=config.get_int('fleetcarrierquerytime', default=0))
+        self.nextUpdateCarrierTime: int = int(time.time())
+        self.capiMutex: threading.Semaphore = threading.Semaphore()
+
     def __del__(self):
         if self.requests_session:
             self.requests_session.close()
@@ -82,6 +89,7 @@ class PushRequest:
     TYPE_CARRIER_JUMP: int = 6
     TYPE_SCS_SELL: int = 7
     TYPE_CMDR_UPDATE: int = 8
+    TYPE_CARRIER_TRANSFER: int = 9
 
     def __init__(self, cmdr, station: str, reqType: int, data: dict):
         self.cmdr = cmdr
@@ -340,8 +348,14 @@ def process_item(item: PushRequest) -> None:
             logger.warning('DISABLED by killswitch, ignoring')
             return
         this.sheet.update_cmdr_attributes(item.cmdr, this.cargoCapacity)
+    elif item.type == PushRequest.TYPE_CARRIER_TRANSFER:
+        logger.info('Processing Carrier Transfer request')
+        if this.killswitches.get(KILLSWITCH_CARRIER_TRANSFER, 'true') != 'true':
+            logger.warning('DISABLED by killswitch, ignoring')
+            return
+        process_carrier_transfer(sheetName, item.cmdr, item.data)
 
-def process_scs_market_updates(cmdr, station: str, data: dict) -> None:
+def process_scs_market_updates(cmdr: str, station: str, data: dict) -> None:
     """Because SCS transfers don't provide the same journal info, we'll have to get a bit more creative"""
     # Its most likely that the current cargo will be empty, but that might not be the case
     for cargoItem in data['oldCargo']:
@@ -361,10 +375,48 @@ def process_scs_market_updates(cmdr, station: str, data: dict) -> None:
             else:
                 this.sheet.add_to_scs_sheet(cmdr, station, cargoItem, oldAmount - newAmount)    # Yes, this is backwards, but we want a positive amount
 
+def process_carrier_transfer(sheetName: str, cmdr: str, data:dict) -> None:
+    """Handle direct carrier transfers, so totals still line up"""
+    for transfer in data['Transfers']:
+        commodity = transfer['Type']
+        amount = int(transfer['Count'])
+        
+        if transfer['Direction'] == 'tocarrier':
+            # Count this as a 'Sell'
+            this.sheet.add_to_carrier_sheet(sheetName, cmdr, commodity, amount)
+        else:
+            # Count this as a 'Buy'
+            amount = amount * -1
+            this.sheet.add_to_carrier_sheet(sheetName, cmdr, commodity, amount)
+
+
 def journal_entry(cmdr, is_beta, system, station, entry, state):
-    logger.info(entry['event'] + ' at ' + (station or '<unknown>'))
-    logger.info(f'Entry: {entry}')
-    logger.info(f'State: {state}')
+    location = station
+    if not location and entry.get('CarrierID'): # Event must be carrier based
+        location = this.carrierCallsign
+    logger.debug(entry['event'] + ' at ' + (location or '<unknown>'))
+    logger.debug(f'Entry: {entry}')
+    logger.debug(f'State: {state}')
+    
+
+    if this.carrierAPIEnabled.get():
+        this.capiMutex.acquire()
+        
+        # Stick to the 15 minute cooldown that EDMC uses
+        if int(time.time()) > (this.lastCarrierQueryTime.get() + capi_fleetcarrier_query_cooldown):
+            # Request info from the Carrier API.
+            # This seems to run on the same server that calculates jump slots, so when its busy the API takes *ages* to respond
+            query_time = int(time.time())
+            this.lastCarrierQueryTime.set(query_time)
+            logger.debug('Calling FC API...')
+            csession.fleetcarrier(
+                query_time=query_time, tk_response_event=_CAPI_RESPONSE_TK_EVENT_NAME
+            )
+            logger.debug('Done')
+
+        this.capiMutex.release()
+        
+
     if entry['event'] == 'StartUp':
         """
         {
@@ -388,6 +440,10 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
         this.currentCargo = state['Cargo']
         this.cargoCapacity = state['CargoCapacity']
         this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_UPDATE, None))
+
+        if entry['StationType'] == 'FleetCarrier':
+            this.carrierCallsign = station
+
     elif entry['event'] == 'Location':
         logger.info(f'Location: In system {system}')
         if station is None:
@@ -403,6 +459,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
          # Update the carrier location
         if station in this.sheet.carrierTabNames.keys():
             this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_LOC_UPDATE, system))
+            this.carrierCallsign = station
 
         # Update cargo capacity if its changed (There might be a better event for this)
         if this.cargoCapacity != state['CargoCapacity']:
@@ -524,7 +581,110 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             "DepartureTime": "2025-03-09T03:36:10Z"
         }
         """
-        logger.debug(f'Carrier Jump for {this.carrierCallsign}')
+        if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
+            logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
+            this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
+    elif entry['event'] == 'CarrierJump':
+        """
+        {
+            "timestamp": "2025-03-14T07:11:01Z",
+            "event": "CarrierJump",
+            "Docked": false,
+            "OnFoot": true,
+            "StarSystem": "Katuri",
+            "SystemAddress": 3309012257139,
+            "StarPos": [-19.68750, -6.06250, 81.56250],
+            "SystemAllegiance": "Federation",
+            "SystemEconomy": "$economy_Agri;",
+            "SystemEconomy_Localised": "Agriculture",
+            "SystemSecondEconomy": "$economy_Refinery;",
+            "SystemSecondEconomy_Localised": "Refinery",
+            "SystemGovernment": "$government_Democracy;",
+            "SystemGovernment_Localised": "Democracy",
+            "SystemSecurity": "$SYSTEM_SECURITY_high;",
+            "SystemSecurity_Localised": "High Security",
+            "Population": 2841893384,
+            "Body": "Katuri A 1",
+            "BodyID": 7,
+            "BodyType": "Planet",
+            "ControllingPower": "Yuri Grom",
+            "Powers": ["Edmund Mahon", "Yuri Grom"],
+            "PowerplayState": "Stronghold",
+            "Factions": [{
+                    "Name": "Independents of Katuri",
+                    "FactionState": "None",
+                    "Government": "Democracy",
+                    "Influence": 0.009911,
+                    "Allegiance": "Independent",
+                    "Happiness": "$Faction_HappinessBand2;",
+                    "Happiness_Localised": "Happy",
+                    "MyReputation": 0.000000
+                }, {
+                    "Name": "Katuri Jet Advanced Inc",
+                    "FactionState": "None",
+                    "Government": "Corporate",
+                    "Influence": 0.014866,
+                    "Allegiance": "Federation",
+                    "Happiness": "$Faction_HappinessBand2;",
+                    "Happiness_Localised": "Happy",
+                    "MyReputation": 0.000000
+                }, {
+                    "Name": "Defence Force of Katuri",
+                    "FactionState": "None",
+                    "Government": "Dictatorship",
+                    "Influence": 0.016848,
+                    "Allegiance": "Independent",
+                    "Happiness": "$Faction_HappinessBand2;",
+                    "Happiness_Localised": "Happy",
+                    "MyReputation": 0.000000
+                }, {
+                    "Name": "Katuri Legal Company",
+                    "FactionState": "None",
+                    "Government": "Corporate",
+                    "Influence": 0.025768,
+                    "Allegiance": "Federation",
+                    "Happiness": "$Faction_HappinessBand2;",
+                    "Happiness_Localised": "Happy",
+                    "MyReputation": 0.000000
+                }, {
+                    "Name": "Katuri Jet Boys",
+                    "FactionState": "None",
+                    "Government": "Anarchy",
+                    "Influence": 0.018831,
+                    "Allegiance": "Independent",
+                    "Happiness": "$Faction_HappinessBand2;",
+                    "Happiness_Localised": "Happy",
+                    "MyReputation": 0.000000
+                }, {
+                    "Name": "Section 31",
+                    "FactionState": "None",
+                    "Government": "Corporate",
+                    "Influence": 0.009911,
+                    "Allegiance": "Federation",
+                    "Happiness": "$Faction_HappinessBand2;",
+                    "Happiness_Localised": "Happy",
+                    "MyReputation": 0.000000
+                }, {
+                    "Name": "Intergalactic Nova Republic",
+                    "FactionState": "None",
+                    "Government": "Democracy",
+                    "Influence": 0.903865,
+                    "Allegiance": "Federation",
+                    "Happiness": "$Faction_HappinessBand2;",
+                    "Happiness_Localised": "Happy",
+                    "MyReputation": 0.000000,
+                    "PendingStates": [{
+                            "State": "Expansion",
+                            "Trend": 0
+                        }
+                    ]
+                }
+            ],
+            "SystemFaction": {
+                "Name": "Intergalactic Nova Republic"
+            }
+        }
+        """
         if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
             logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
             this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
@@ -619,12 +779,41 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
         """
         # Keep track of the call sign for easy lookups later
         this.carrierCallsign = entry['Callsign']
+        logger.debug(f'Carrier ID updated to {this.carrierCallsign}')
+    elif entry['event'] == 'CargoTransfer':
+        """
+        {
+            "timestamp": "2025-03-14T10:26:51Z",
+            "event": "CargoTransfer",
+            "Transfers": [{
+                    "Type": "steel",
+                    "Count": 76,
+                    "Direction": "tocarrier"
+                }, {
+                    "Type": "steel",
+                    "Count": 644,
+                    "Direction": "tocarrier"
+                }
+            ]
+        }
+        """
+        if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
+            logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
+            this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_TRANSFER, entry))
+
+
         
 def cmdr_data(data, is_beta):
     if data.source_host == SERVER_LIVE:
         logger.debug(f'CAPI: {data}')
         
 def capi_fleetcarrier(data):
+    """ Fleetcarrier data is not updated often, so calling this more than once every 15 minutes is pointless"""
     if data.source_host == SERVER_LIVE:
         logger.debug(f'FC: {data}')
+
+        # Reconcile Fleet Carrier orders
+
+        # Update current location
+
     
