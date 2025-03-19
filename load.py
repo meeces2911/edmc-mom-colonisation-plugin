@@ -30,7 +30,7 @@ from auth import Auth
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
-VERSION = '1.0.2'
+VERSION = '1.0.3-beta2'
 _CAPI_RESPONSE_TK_EVENT_NAME = '<<CAPIResponse>>'
 
 KILLSWITCH_CMDR_UPDATE = 'cmdr info update'
@@ -41,6 +41,7 @@ KILLSWITCH_CARRIER_MARKET = 'carrier market full'
 KILLSWITCH_SCS_SELL = 'scs sell commodity'
 KILLSWITCH_CMDR_BUYSELL = 'cmdr buysell commodity'
 KILLSWITCH_CARRIER_TRANSFER = 'carrier transfer'
+KILLSWITCH_CARRIER_RECONCILE = 'carrier reconcile'
 
 # Probably overkill, but lets start with a sensible framework like how the EDSM plugin does it
 class This:
@@ -90,6 +91,7 @@ class PushRequest:
     TYPE_SCS_SELL: int = 7
     TYPE_CMDR_UPDATE: int = 8
     TYPE_CARRIER_TRANSFER: int = 9
+    TYPE_CARRIER_RECONCILE: int = 10
 
     def __init__(self, cmdr, station: str, reqType: int, data: dict):
         self.cmdr = cmdr
@@ -156,6 +158,8 @@ def prefs_changed(cmdr: str | None, is_beta: bool) -> None:
     """
     this.settingsClosed = True
 
+    initial_startup()
+
 def plugin_start3(plugin_dir: str) -> str:
     """
     Only allow the plugin to run in version 5 and above
@@ -203,22 +207,7 @@ def worker() -> None:
             logger.debug("Main: Shutting down, existing thread")
             return None
     
-    # Get auth token first
-    this.auth = Auth(monitor.cmdr, this.requests_session)
-    this.auth.refresh()    
-
-    # Add bearer token to all future requests
-    this.requests_session.headers['Authorization'] = f'Bearer {this.auth.access_token}'
-
-    # Ok, now make sure we can access the spreadsheet
-    this.sheet = Sheet(this.auth, this.requests_session)
-    
-    # Request some initial settings
-    this.sheet.populate_initial_settings()
-    this.killswitches = this.sheet.killswitches
-    
-    # Record the fact that we're using the plugin
-    this.sheet.record_plugin_usage(monitor.cmdr, VERSION)
+    initial_startup()
 
     # Then start the main loop
     logger.debug("Startup complete, entering main loop")
@@ -258,6 +247,22 @@ def worker() -> None:
             this.auth = None
             return None
 
+def initial_startup() -> None:
+    """'First' startup code. Also called after settings have changed"""
+    # Get auth token first
+    this.auth = Auth(monitor.cmdr, this.requests_session)
+    this.auth.refresh()
+
+    # Ok, now make sure we can access the spreadsheet
+    this.sheet = Sheet(this.auth, this.requests_session)
+    
+    # Request some initial settings
+    this.sheet.populate_initial_settings()
+    this.killswitches = this.sheet.killswitches
+    
+    # Record the fact that we're using the plugin
+    this.sheet.record_plugin_usage(monitor.cmdr, VERSION)
+
 def process_kill_siwtches() -> bool:
     """Go through all the killswitches and if any match, return True to suspend the plugin"""
     
@@ -286,74 +291,84 @@ def process_kill_siwtches() -> bool:
     return False
 
 def process_item(item: PushRequest) -> None:
-    logger.debug(f'Processing item: [{item.type}] {item.data}')
-    sheetName = this.sheet.carrierTabNames.get(item.station)
-    if item.type == PushRequest.TYPE_CMDR_SELL:
-        logger.info('Processing CMDR Sell request')
-        if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
-            logger.warning('DISABLED by killswitch, ignoring')
-            return
-        commodity = item.data['Type']
-        amount = int(item.data['Count'])
-        this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount)
-    elif item.type == PushRequest.TYPE_CARRIER_LOC_UPDATE:
-        logger.info('Processing Carrier Location update')
-        if this.killswitches.get(KILLSWITCH_CARRIER_LOC, 'true') != 'true':
-            logger.warning('DISABLED by killswitch, ignoring')
-            return
-        this.sheet.update_carrier_location(sheetName, item.data)
-    elif item.type == PushRequest.TYPE_CARRIER_MARKET_UPDATE:
-        logger.info('Processing Carrier Market update')
-        if this.killswitches.get(KILLSWITCH_CARRIER_MARKET, 'true') != 'true':
-            logger.warning('DISABLED by killswitch, ignoring')
-            return
-        this.sheet.update_carrier_market(sheetName, item.data)
-    elif item.type == PushRequest.TYPE_CMDR_BUY:
-        logger.info('Processing CMDR Buy request')
-        if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
-            logger.warning('DISABLED by killswitch, ignoring')
-            return
-        commodity = item.data['Type']
-        amount = int(item.data['Count']) * -1   # We're removing from the carrier
-        this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount)
-    elif item.type == PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE:
-        logger.info('Processing Carrier Buy/Sell Order update')
-        logger.debug(this.killswitches)
-        if this.killswitches.get(KILLSWITCH_CARRIER_BUYSELL_ORDER, 'true') != 'true':
-            logger.warning('DISABLED by killswitch, ignoring')
-            return
-        commodity = item.data['Commodity']
-        amount = 0
-        # Currently, only track Buy orders
-        if item.data.get('PurchaseOrder'):
-            amount = int(item.data['PurchaseOrder'])
-        this.sheet.update_carrier_market_entry(sheetName, item.station, commodity, amount)
-    elif item.type == PushRequest.TYPE_CARRIER_JUMP:
-        logger.info('Processing Carrier Jump update')
-        if this.killswitches.get(KILLSWITCH_CARRIER_JUMP, 'true') != 'true':
-            logger.warning('DISABLED by killswitch, ignoring')
-            return
-        destination = item.data.get('Body')
-        departTime = item.data.get('DepartureTime')
-        this.sheet.update_carrier_jump_location(sheetName, destination, departTime)
-    elif item.type == PushRequest.TYPE_SCS_SELL:
-        logger.info('Processing SCS Sell request')
-        if this.killswitches.get(KILLSWITCH_SCS_SELL, 'true') != 'true':
-            logger.warning('DISABLED by killswitch, ignoring')
-            return
-        process_scs_market_updates(item.cmdr, item.station, item.data)
-    elif item.type == PushRequest.TYPE_CMDR_UPDATE:
-        logger.info('Processing CMDR Update')
-        if this.killswitches.get(KILLSWITCH_CMDR_UPDATE, 'true') != 'true':
-            logger.warning('DISABLED by killswitch, ignoring')
-            return
-        this.sheet.update_cmdr_attributes(item.cmdr, this.cargoCapacity)
-    elif item.type == PushRequest.TYPE_CARRIER_TRANSFER:
-        logger.info('Processing Carrier Transfer request')
-        if this.killswitches.get(KILLSWITCH_CARRIER_TRANSFER, 'true') != 'true':
-            logger.warning('DISABLED by killswitch, ignoring')
-            return
-        process_carrier_transfer(sheetName, item.cmdr, item.data)
+    # Don't let one failed update kill the entire plugin
+    try:
+        logger.debug(f'Processing item: [{item.type}] {item.data}')
+        sheetName = this.sheet.carrierTabNames.get(item.station)
+        if item.type == PushRequest.TYPE_CMDR_SELL:
+            logger.info('Processing CMDR Sell request')
+            if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
+                logger.warning('DISABLED by killswitch, ignoring')
+                return
+            commodity = item.data['Type']
+            amount = int(item.data['Count'])
+            this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount)
+        elif item.type == PushRequest.TYPE_CARRIER_LOC_UPDATE:
+            logger.info('Processing Carrier Location update')
+            if this.killswitches.get(KILLSWITCH_CARRIER_LOC, 'true') != 'true':
+                logger.warning('DISABLED by killswitch, ignoring')
+                return
+            this.sheet.update_carrier_location(sheetName, item.data)
+        elif item.type == PushRequest.TYPE_CARRIER_MARKET_UPDATE:
+            logger.info('Processing Carrier Market update')
+            if this.killswitches.get(KILLSWITCH_CARRIER_MARKET, 'true') != 'true':
+                logger.warning('DISABLED by killswitch, ignoring')
+                return
+            this.sheet.update_carrier_market(sheetName, item.data)
+        elif item.type == PushRequest.TYPE_CMDR_BUY:
+            logger.info('Processing CMDR Buy request')
+            if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
+                logger.warning('DISABLED by killswitch, ignoring')
+                return
+            commodity = item.data['Type']
+            amount = int(item.data['Count']) * -1   # We're removing from the carrier
+            this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount)
+        elif item.type == PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE:
+            logger.info('Processing Carrier Buy/Sell Order update')
+            logger.debug(this.killswitches)
+            if this.killswitches.get(KILLSWITCH_CARRIER_BUYSELL_ORDER, 'true') != 'true':
+                logger.warning('DISABLED by killswitch, ignoring')
+                return
+            commodity = item.data['Commodity']
+            amount = 0
+            # Currently, only track Buy orders
+            if item.data.get('PurchaseOrder'):
+                amount = int(item.data['PurchaseOrder'])
+            this.sheet.update_carrier_market_entry(sheetName, item.station, commodity, amount)
+        elif item.type == PushRequest.TYPE_CARRIER_JUMP:
+            logger.info('Processing Carrier Jump update')
+            if this.killswitches.get(KILLSWITCH_CARRIER_JUMP, 'true') != 'true':
+                logger.warning('DISABLED by killswitch, ignoring')
+                return
+            destination = item.data.get('Body')
+            departTime = item.data.get('DepartureTime')
+            this.sheet.update_carrier_jump_location(sheetName, destination, departTime)
+        elif item.type == PushRequest.TYPE_SCS_SELL:
+            logger.info('Processing SCS Sell request')
+            if this.killswitches.get(KILLSWITCH_SCS_SELL, 'true') != 'true':
+                logger.warning('DISABLED by killswitch, ignoring')
+                return
+            process_scs_market_updates(item.cmdr, item.station, item.data)
+        elif item.type == PushRequest.TYPE_CMDR_UPDATE:
+            logger.info('Processing CMDR Update')
+            if this.killswitches.get(KILLSWITCH_CMDR_UPDATE, 'true') != 'true':
+                logger.warning('DISABLED by killswitch, ignoring')
+                return
+            this.sheet.update_cmdr_attributes(item.cmdr, this.cargoCapacity)
+        elif item.type == PushRequest.TYPE_CARRIER_TRANSFER:
+            logger.info('Processing Carrier Transfer request')
+            if this.killswitches.get(KILLSWITCH_CARRIER_TRANSFER, 'true') != 'true':
+                logger.warning('DISABLED by killswitch, ignoring')
+                return
+            process_carrier_transfer(sheetName, item.cmdr, item.data)
+        elif item.type == PushRequest.TYPE_CARRIER_RECONCILE:
+            logger.info('Processing Carrier Reconcile request')
+            if this.killswitches.get(KILLSWITCH_CARRIER_RECONCILE, 'true') != 'true':
+                logger.warning('DISABLED by killswitch, ignoring')
+                return
+            this.sheet.reconcile_carrier_market(item.data)
+    except Exception as ex:
+        logger.error(ex.with_traceback())
 
 def process_scs_market_updates(cmdr: str, station: str, data: dict) -> None:
     """Because SCS transfers don't provide the same journal info, we'll have to get a bit more creative"""
@@ -391,6 +406,11 @@ def process_carrier_transfer(sheetName: str, cmdr: str, data:dict) -> None:
 
 
 def journal_entry(cmdr, is_beta, system, station, entry, state):
+    if not this.sheet:
+        logger.error('Journal entry before finished authenticating to Google, ignored')
+        return
+
+    
     location = station
     if not location and entry.get('CarrierID'): # Event must be carrier based
         location = this.carrierCallsign
@@ -441,7 +461,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
         this.cargoCapacity = state['CargoCapacity']
         this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_UPDATE, None))
 
-        if entry['StationType'] == 'FleetCarrier':
+        if entry.get('StationType') == 'FleetCarrier':
             this.carrierCallsign = station
 
     elif entry['event'] == 'Location':
@@ -470,7 +490,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
          this.currentCargo = None
     elif entry['event'] == 'Cargo':
         # SCS don't do MarketSell, but there are Cargo events, so lets just track what we started with and do a diff
-        if station == 'System Colonisation Ship':
+        if station == 'System Colonisation Ship' or station == '$EXT_PANEL_ColonisationShip:#index=1;':
             data = {
                 'oldCargo': this.currentCargo,
                 'newCargo': state['Cargo']
@@ -487,9 +507,12 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
 
             path = Path(journaldir) / f'{entry["event"]}.json'
             logger.debug(path)
-            with path.open('rb') as dataFile:
-                marketData = json.load(dataFile)
-                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_MARKET_UPDATE, marketData))
+            try:
+                with path.open('rb') as dataFile:
+                    marketData = json.load(dataFile)
+                    this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_MARKET_UPDATE, marketData))
+            except Exception as ex:
+                logger.error(ex)
     elif entry['event'] == 'MarketSell':
         """
         {
@@ -813,6 +836,10 @@ def capi_fleetcarrier(data):
         logger.debug(f'FC: {data}')
 
         # Reconcile Fleet Carrier orders
+        # TODO: Change from overwriting starting inv, and use descrepency instead
+        # TODO: This is so far behind current tracking that its useless when actively being filled :(
+        # Just ignore it then ?
+        #this.queue.put(PushRequest(None, None, PushRequest.TYPE_CARRIER_RECONCILE, data))
 
         # Update current location
 

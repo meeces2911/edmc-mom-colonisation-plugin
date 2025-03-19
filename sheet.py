@@ -20,6 +20,8 @@ class Sheet:
     LOOKUP_CARRIER_LOCATION = 'Carrier Location'
     LOOKUP_CARRIER_BUY_ORDERS = 'Carrier Buy Orders'
     LOOKUP_CARRIER_JUMP_LOC = 'Carrier Jump Location'
+    LOOKUP_CARRIER_SUM_CARGO = 'Carrier Sum Cargo'
+    LOOKUP_CARRIER_STARTING_INV = 'Carrier Starting Inventory'
     LOOKUP_SCS_SHEET_NAME = 'SCS Sheet'
     LOOKUP_SYSTEMINFO_SHEET_NAME = 'System Info Sheet'
     LOOKUP_CMDR_INFO = 'CMDR Info'
@@ -33,6 +35,7 @@ class Sheet:
         self.carrierTabNames: dict[str, str] = {}
         self.marketUpdatesSetBy: dict[str, dict] = {}
         self.lookupRanges: dict[str, str] = {}
+        self.buyOrdersIveSet: dict[str, int] = {}
 
         if not config.shutting_down:
             # If shutdown is called during the intial stages of auth, we won't have been initialised yet
@@ -98,6 +101,7 @@ class Sheet:
                 if res.status_code == requests.codes.ok:
                     return res.json()
                 elif res.status_code == requests.codes.unauthorized:
+                    logger.error(f'{res}{res.json()}')
                     if not token_refresh_attempted:
                         token_refresh_attempted = True
                         self.auth.refresh()
@@ -163,65 +167,80 @@ class Sheet:
         logger.debug('Fetching latest settings')
         
         sheet = f"'{self.configSheetName.get()}'"
-        query = 'A:C'
-        data = self.fetch_data(f'{sheet}!{query}')
-        logger.debug(data)
+        data = self.fetch_data(f'{sheet}!A:C')
+        carriers = self.fetch_data(f'{sheet}!J:L')
+        markets = self.fetch_data(f'{sheet}!O:P')
+        #logger.debug(data)
+        #logger.debug(carriers)
+        #logger.debug(markets)
         
         # TODO: Error handling
+        # for now, just bail, and try again later
+        if not data or not carriers or not markets:
+            return
 
         self.killswitches = {}
         self.carrierTabNames = {}
         self.marketUpdatesSetBy = {}
         self.lookupRanges = {}
+        self.commodityNamesToNice = {}
+        self.commodityNamesFromNice = {}
 
         section_killswitches = False
-        section_carriers = False
-        section_market_updates = False
         section_lookups = False
+        section_commodity_mapping = False
 
-        for row in data.get('values'):
-            logger.debug(row)
+        # Lets not let temporary failures in these settings kill the entire plugin
+        try:
 
-            if len(row) == 0:
-                # Blank line, skip
-                section_killswitches = False
-                section_carriers = False
-                section_market_updates = False
-                section_lookups = False
-                continue
-            elif row[0] == 'Killswitches':
-                section_killswitches = True
-                continue
-            elif row[0] == 'Carriers':
-                section_carriers = True
-                continue
-            elif row[0] == 'Markets':
-                section_market_updates = True
-                continue
-            elif row[0] == 'Lookups':
-                section_lookups = True
-                continue
+            for row in data.get('values'):
+                logger.debug(row)
 
-            if section_killswitches:
-                self.killswitches[row[0].lower()] = row[1].lower()
-                continue
-            elif section_carriers:
+                if len(row) == 0:
+                    # Blank line, skip
+                    section_killswitches = False
+                    section_lookups = False
+                    section_commodity_mapping = False
+                    continue
+                elif row[0] == 'Killswitches':
+                    section_killswitches = True
+                    continue
+                elif row[0] == 'Lookups':
+                    section_lookups = True
+                    continue
+                elif row[0] == 'Commodity Mapping':
+                    section_commodity_mapping = True
+                    continue
+
+                if section_killswitches:
+                    self.killswitches[row[0].lower()] = row[1].lower()
+                    continue
+                elif section_lookups:
+                    self.lookupRanges[row[0]] = row[1]
+                    continue
+                elif section_commodity_mapping:
+                    self.commodityNamesToNice[row[0]] = row[1]
+                    self.commodityNamesFromNice[row[1]] = row[0]    # TODO: How do we handle double ups here ? Do we care ?
+
+            for row in carriers.get('values'):
+                if row[0] == 'Carriers':
+                    continue
                 self.carrierTabNames[row[1]] = row[2]
-                continue
-            elif section_market_updates:
+
+            for row in markets.get('values'):
                 self.marketUpdatesSetBy[row[0]] = {
-                    'setByOwner': row[1] == 'TRUE'
-                }
-                continue
-            elif section_lookups:
-                self.lookupRanges[row[0]] = row[1]
-                continue
+                        'setByOwner': row[1] == 'TRUE'
+                    }
+        except Exception as ex:
+            logger.error(ex)
 
         self.killswitches['last updated'] = time.time()
-        logger.debug(self.killswitches)
-        logger.debug(self.carrierTabNames)
-        logger.debug(self.marketUpdatesSetBy)
-        logger.debug(self.lookupRanges)
+        #logger.debug(self.killswitches)
+        #logger.debug(self.carrierTabNames)
+        #logger.debug(self.marketUpdatesSetBy)
+        #logger.debug(self.lookupRanges)
+        logger.debug(self.commodityNamesToNice)
+        logger.debug(self.commodityNamesFromNice)
 
     def sheet_names(self) -> list[str]:
         if self.sheets:
@@ -230,30 +249,11 @@ class Sheet:
 
     def commodity_type_name_to_dropdown(self, commodity: str) -> str:
         """Returns the specific commodity name that matches the one in the spreadsheet"""
-        if commodity == 'ceramiccomposites':
-            return 'Ceramic Composites'
-        elif commodity == 'cmmcomposite':
-            return 'CMM Composite'
-        elif commodity == 'computercomponents':
-            return 'Computer Components'
-        elif commodity == 'foodcartridges':
-            return 'Food Cartridges'
-        elif commodity == 'fruitandvegetables':
-            return 'Fruit and Vedge'
-        elif commodity == 'ceramicinsulatingmembrane' or commodity == 'insulatingmembrane':
-            return 'Insulating Membrane'
-        elif commodity == 'liquidoxygen':
-            return 'Liquid Oxygen'
-        elif commodity == 'medicaldiagnosticequipment':
-            return 'Medical Diagnostic Equipment'
-        elif commodity == 'nonlethalweapons':
-            return 'Non-Lethal Weapons'
-        elif commodity == 'powergenerators':
-            return 'Power Generators'
-        elif commodity == 'waterpurifiers':
-            return 'Water Purifiers'
-        
-        return commodity.title()    # Convert to Camelcase to match the spreadsheet a bit better
+        return self.commodityNamesToNice.get(commodity, commodity.title())  # Convert to Camelcase to match the spreadsheet a bit better
+
+    def dropdown_to_commodity_type_name(self, commodity: str) -> str:
+        """Returns the specific commodity name thats matches the one in the spreadsheet"""
+        return self.commodityNamesFromNice.get(commodity, commodity)
 
     def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int) -> None:
         """Updates the carrier sheet with some cargo"""
@@ -318,9 +318,24 @@ class Sheet:
         spreadsheetCommodity = self.commodity_type_name_to_dropdown(commodity)
         logger.debug(f"Updating {spreadsheetCommodity} to {amount}")
 
+        startingInventory = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_STARTING_INV] or 'A1:C20'}")
+        logger.debug(startingInventory)
+        if len(startingInventory) == 0:
+            logger.error('No Starting Inventory found, bailing')
+            return
+        
+        # Fudge the Buy order a bit to keep the ship inventory total correct, by including any starting inventory
+        for row in startingInventory['values']:
+            if row[1] == spreadsheetCommodity and len(row) == 3:
+                amount += int(row[2])
+
         # Find our commodity in the list
         buyOrders = self.fetch_data(f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_BUY_ORDERS] or 'F3:H22'}")
         logger.debug(f'Old: {buyOrders}')
+        if len(buyOrders) == 0:
+            logger.error('No Buy Order table found, bailing')
+            return
+
         for order in buyOrders['values']:
             # Make sure we don't overwrite the Demand column
             order[2] = None
@@ -330,10 +345,11 @@ class Sheet:
                     order[1] = amount
                 else:
                     order[1] = ''
-                break
 
         logger.debug(f'New: {buyOrders}')
         self.update_data(buyOrders['range'], buyOrders)
+
+        self.buyOrdersIveSet[commodity.lower()] = int(time.time())
 
         # Also record that it was updated by the carrier owner
         configSheet = f"'{self.configSheetName.get()}'"
@@ -360,7 +376,7 @@ class Sheet:
                     ]
                 ]
             }
-            self.insert_data(range, body)
+            #self.insert_data(range, body)
         
     def add_to_scs_sheet(self, cmdr: str, system: str, commodity: str, amount: int) -> None:
         """Updates the SCS sheet with some cargo"""
@@ -374,7 +390,7 @@ class Sheet:
                 [
                     #cmdr       # This isn't currently recorded, but needs to be
                     self.commodity_type_name_to_dropdown(commodity),
-                    system.upper(),
+                    system,
                     amount
                 ]
             ]
@@ -450,3 +466,98 @@ class Sheet:
                 ]
             }
             self.insert_data(range, body)
+
+    def reconcile_carrier_market(self, carrierData: dict) -> None:
+        """
+        After the CAPI call has come back, we know (within the last 15 or so minutes) the current state of the carrier.
+        So, lets make sure the Buy orders and inventory match up.
+        """
+        carrier: str = carrierData['name']['callsign']
+        if not carrier in self.carrierTabNames.keys():
+            logger.debug(f'Carrier {carrier} unknown, ignoring')
+            return
+        
+        logger.debug('Building Reconcile Carrier message')
+        sheet = f"'{self.carrierTabNames[carrier]}'"
+        
+        buyOrders = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_BUY_ORDERS] or 'F3:H22'}")
+        logger.debug(buyOrders)
+        if len(buyOrders) == 0:
+            logger.error('No Buy Order data found, bailing')
+            return
+        
+        startingInventory = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_STARTING_INV] or 'A1:C20'}")
+        logger.debug(startingInventory)
+        if len(startingInventory) == 0:
+            logger.error('No Starting Inventory found, bailing')
+            return
+        
+        startingInventoryAmounts: dict[str, int] = {}
+        for row in startingInventory['values']:
+            if row[0] == 'CMDR':
+                continue
+            if len(row) == 3:
+                startingInventoryAmounts[row[1]] = int(row[2])
+            else:
+                startingInventoryAmounts[row[1]] = 0
+        logger.debug(startingInventoryAmounts)
+
+        # Clear out all buy orders and start from scratch
+        for row in buyOrders['values']:
+            if row[0] == 'Commodity':
+                continue    # Skip the table header
+            
+            # Only blank them out if we haven't explicitly set them in the last 30 minutes
+            commodity = self.dropdown_to_commodity_type_name(row[0])
+            if not self.buyOrdersIveSet.get(commodity) or (self.buyOrdersIveSet[commodity.lower()] + 60 * 30) < int(time.time()):
+                logger.debug(f'{row[0]} is old, replacing ({row[1]}) with CAPI value')
+                row[1] = startingInventoryAmounts.get(commodity, '')
+                logger.debug(f'Resetting to starting value {row[1]}')
+            row[2] = None   # Don't overwrite the computed cells
+
+        # Now go through all the current orders and set them
+        for order in carrierData['orders']['commodities']['purchases']:
+            commodityName = self.commodity_type_name_to_dropdown(order['name'])
+            if not self.buyOrdersIveSet.get(commodity) or (self.buyOrdersIveSet[commodity.lower()] + 60 * 30) < int(time.time()):
+                for row in buyOrders['values']:
+                    if row[0] == commodityName:
+                        row[1] = int(order['total']) + startingInventoryAmounts.get(commodityName, 0)
+
+        # Work out how much the spreadsheet thinks is on the ship
+        sumCargo = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_SUM_CARGO] or 'AE:AF'}")
+        logger.debug(sumCargo)
+        if len(sumCargo) == 0:
+            logger.error('No Sum Cargo data found, bailing')
+            return
+        
+        for cargo in sumCargo['values']:
+            if len(cargo) == 0 or cargo[0] == 'Commodity':
+                continue    # Skip blank rows and headers
+
+            cargoNiceName = cargo[0]
+            logger.debug(f'Checking {cargoNiceName}')
+            commodityName = self.dropdown_to_commodity_type_name(cargoNiceName).lower()
+            if cargoNiceName != commodityName:
+                logger.debug(f'(Converting to {commodityName})')
+
+            commodityTotal: int = 0
+            for carrierCargo in carrierData['cargo']:
+                # Unhelpfully, there can be multiple entries of the same cargo in this array, so we have to go through it all and add it up
+                if carrierCargo['commodity'].lower() == commodityName:
+                    commodityTotal += int(carrierCargo['qty'])
+
+            if commodityTotal != int(cargo[1]):
+                logger.debug(f'Descrepency found! Correcting [Actual:{commodityTotal} vs Estimated:{cargo[1]}]')
+                # Ok, lets now update the Starting Inventory
+                for invRow in startingInventory['values']:
+                    if invRow[1] == cargoNiceName:
+                        if len(invRow) == 3:
+                            invRow[2] = int(invRow[2]) + (commodityTotal - int(cargo[1]))
+                        else:
+                            invRow.append(int(commodityTotal - int(cargo[1])))
+
+
+        logger.debug(buyOrders)
+        logger.debug(startingInventory)
+        self.update_data(buyOrders['range'], buyOrders)
+        self.update_data(startingInventory['range'], startingInventory)

@@ -94,6 +94,10 @@ class Auth:
                 
                 self.access_token = resBodyJson.get('access_token')
                 this.access_token = self.access_token   # TODO: rationalise this
+
+                # Add bearer token to all future requests
+                self.requests_session.headers['Authorization'] = f'Bearer {this.access_token}'
+
                 return None
         
         logger.info("Google API: New auth request")
@@ -198,6 +202,9 @@ class Auth:
         
         self.access_token = resBodyJson.get('access_token')    
         this.access_token = self.access_token
+
+        # Add bearer token to all future requests
+        self.requests_session.headers['Authorization'] = f'Bearer {this.access_token}'
     
     def clear_auth_token(self) -> None:
         cmdrs = config.get_list('cmdrs', default=[])
