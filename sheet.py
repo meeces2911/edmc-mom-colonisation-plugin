@@ -89,7 +89,38 @@ class Sheet:
             key = sheet['properties']['title']
             value = sheet['properties']['sheetId']
             self.sheets[key] = int(value)
+
+    def _A1_to_index(self, colStr: str) -> list[int]:
+        """Converts an A1 range column into a numeric index, starting from A = 0"""
+        colIdx = 0
+        rowStr = ''
+        for char in colStr:
+            charInt = ord(char)
+            if charInt >= 65:  # ord('A') = 65
+                colIdx += charInt - 65
+            else:
+                rowStr += char
+        return [colIdx, int(rowStr)-1]
+    
+    def _convert_A1_range_to_idx_range(self, a1Str: str, skipHeaderRow: bool) -> dict:
+        # 'EDMC Plugin Settings'!E1:G4
+        splits = a1Str.split('!')
+        sheetName = splits[0].replace("'", '')                      # 'EDMC Plugin Settings'
+        ranges = splits[1].split(':')
+        rangeStart = self._A1_to_index(ranges[0])                   # E1 -> col:4, row:0
+        rangeEnd = self._A1_to_index(ranges[1])                     # G4 -> col:6, row:3
         
+        rowOffset = 1 if skipHeaderRow else 0
+
+        return {
+                'sheetId': self.sheets[sheetName],
+                'startRowIndex': rangeStart[1] + rowOffset,         # Inclusive
+                'endRowIndex': rangeEnd[1] + 1,                     # Exclusive (ie, + 1 from where you want to finish)
+                'startColumnIndex': rangeStart[0],                  # Inclusive
+                'endColumnIndex': rangeEnd[0]                       # Exclusive (ie, + 1 from where you want to finish)
+            }
+        
+
     def fetch_data(self, query: str) -> any:
         """Actually send a request to Google"""
         base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values/{query}'
@@ -112,7 +143,7 @@ class Sheet:
         except:
             return {}
 
-    def insert_data(self, range: str, body: dict) -> None:
+    def insert_data(self, range: str, body: dict) -> any:
         """Add/update some data in the spreadsheet"""
         # POST https://sheets.googleapis.com/v4/spreadsheets/SPREADSHEET_ID/values/Sheet1!A1:E1:append?valueInputOption=VALUE_INPUT_OPTION
         # Append adds new rows to the end of the given range
@@ -137,7 +168,7 @@ class Sheet:
                 logger.error(f'{res}{res.json()}')
             return None
 
-    def update_data(self, range: str, body: dict) -> None:
+    def update_data(self, range: str, body: dict) -> any:
         """Updates existing data in the spreadsheet"""
         # PUT https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}/values/{range}?valueInputOption=VALUE_INPUT_OPTION
         base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values/{range}?valueInputOption=USER_ENTERED'
@@ -159,6 +190,35 @@ class Sheet:
                     continue
             else:
                 logger.error(f'{res}{res.json()}')
+            return None
+
+    def update_sheet(self, sheetUpdates: list) -> any:
+        """Updates an existing sheet, copying cells, setting display formats...etc"""
+        # POST https://sheets.googleapis.com/v4/spreadsheets/SPREADSHEET_ID:batchUpdate
+        base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}:batchUpdate'
+        logger.debug(f'Sending request to POST {base_url}')
+        
+        body = {
+            'requests': sheetUpdates
+        }
+        logger.debug(json.dumps(body))
+
+        token_refresh_attempted = False
+        while True:
+            logger.debug('sending request...')
+            logger.debug(self.requests_session.headers)
+            res = self.requests_session.post(base_url, json=body, timeout=10)
+            logger.debug(f'{res}{res.json()}')
+            if res.status_code == requests.codes.ok:
+                return res.json()
+            elif res.status_code == requests.codes.unauthorized:
+                if not token_refresh_attempted:
+                    token_refresh_attempted = True
+                    self.auth.refresh()
+                    continue
+            else:
+                logger.error(f'{res}{res.json()}')
+            
             return None
 
     def populate_initial_settings(self) -> None:
@@ -410,13 +470,13 @@ class Sheet:
         for row in data['values']:
             if row[0] == cmdr:
                 row[1] = version
-                row[2] = datetime.datetime.now().replace(microsecond=0).isoformat()
+                row[2] = datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T',' ').replace('+00:00', '')
                 setRow = True
                 break
         
         if setRow:
             logger.debug(f'New Plugin Usage: {data}')
-            self.update_data(data['range'], data)
+            res = self.update_data(data['range'], data)
         else:
             body = {
                 'range': range,
@@ -425,11 +485,36 @@ class Sheet:
                     [
                         cmdr,
                         version,
-                        datetime.datetime.now().replace(microsecond=0).isoformat()
+                        datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T', ' ').replace('+00:00', '')
                     ]
                 ]
             }
-            self.insert_data(range, body)
+            res = self.insert_data(range, body)
+        if res:
+            range = self._convert_A1_range_to_idx_range(res['updatedRange'], skipHeaderRow=True)
+            # We just want to update Column G
+            range['startColumnIndex'] += 2
+            range['endColumnIndex'] = int(range['startColumnIndex']) + 1
+
+            sheetUpdates: list = [
+                {
+                    'repeatCell': {
+                        'range': range,
+                        'cell': {
+                            'userEnteredFormat': {
+                                'numberFormat': {
+                                    'type': 'DATE',
+                                    'pattern': 'yyyy-MM-dd HH:mm:ss'
+                                }
+                            }
+                        },
+                        'fields': 'userEnteredFormat.numberFormat'
+                    }
+                }
+            ]
+            self.update_sheet(sheetUpdates)
+
+    
 
     def update_cmdr_attributes(self, cmdr: str, cargoCapacity: int) -> None:
         """Updates anything we wnat to track about the current CMDR"""
