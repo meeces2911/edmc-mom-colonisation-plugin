@@ -37,6 +37,9 @@ class Sheet:
         self.marketUpdatesSetBy: dict[str, dict] = {}
         self.lookupRanges: dict[str, str] = {}
         self.buyOrdersIveSet: dict[str, int] = {}
+        self.commodityNamesToNice: dict[str, str] = {}
+        self.commodityNamesFromNice: dict[str, str] = {}
+        self.sheetFunctionality: dict[str, dict[str, bool]] = {}
 
         if not config.shutting_down:
             # If shutdown is called during the intial stages of auth, we won't have been initialised yet
@@ -238,9 +241,11 @@ class Sheet:
         data = self.fetch_data(f'{sheet}!A:C')
         carriers = self.fetch_data(f'{sheet}!J:L')
         markets = self.fetch_data(f'{sheet}!O:P')
+        features = self.fetch_data(f'{sheet}!S:U')
         #logger.debug(data)
         #logger.debug(carriers)
         #logger.debug(markets)
+        logger.debug(features)
         
         # TODO: Error handling
         # for now, just bail, and try again later
@@ -253,6 +258,7 @@ class Sheet:
         self.lookupRanges = {}
         self.commodityNamesToNice = {}
         self.commodityNamesFromNice = {}
+        self.sheetFunctionality = {}
 
         section_killswitches = False
         section_lookups = False
@@ -299,6 +305,21 @@ class Sheet:
                 self.marketUpdatesSetBy[row[0]] = {
                         'setByOwner': row[1] == 'TRUE'
                     }
+                
+            colNames: dict[int, str] = {}
+            for row in features.get('values'):
+                if row[0] == 'Sheet Functionality':
+                    for idx in range(1, len(row)):
+                        logger.debug(f'Adding {row[idx]} to Column Names')
+                        colNames[idx] = row[idx]
+                    continue
+                    
+                settings: dict[str, bool] = {}
+                for idx in colNames.keys():
+                    settings[colNames[idx]] = row[idx] == 'TRUE'
+
+                self.sheetFunctionality[row[0]] = settings
+
         except Exception:
             logger.error(traceback.format_exc())
 
@@ -307,8 +328,9 @@ class Sheet:
         #logger.debug(self.carrierTabNames)
         #logger.debug(self.marketUpdatesSetBy)
         #logger.debug(self.lookupRanges)
-        logger.debug(self.commodityNamesToNice)
-        logger.debug(self.commodityNamesFromNice)
+        #logger.debug(self.commodityNamesToNice)
+        #logger.debug(self.commodityNamesFromNice)
+        logger.debug(self.sheetFunctionality)
 
     def sheet_names(self) -> list[str]:
         if self.sheets:
@@ -323,19 +345,37 @@ class Sheet:
         """Returns the specific commodity name thats matches the one in the spreadsheet"""
         return self.commodityNamesFromNice.get(commodity, commodity)
 
-    def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int) -> None:
+    def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int, inTransit: bool = False) -> None:
         """Updates the carrier sheet with some cargo"""
         logger.debug('Building Carrier Sheet Message')
         range = f"'{sheet}'!A:A"
+        bodyValue = [
+            cmdr,
+            self.commodity_type_name_to_dropdown(commodity),
+            amount
+        ]
+
+        #TODO: If inTransit, then record the new rows for updating later when we actually put them on the carrier
+
+        if self.sheetFunctionality[sheet].get('Delivery', False):
+            if amount < 0:
+                # If we're buying *from* the carrier than it should always count as 'delivered'
+                bodyValue.append(True)
+            else:
+                bodyValue.append(inTransit)
+        else:
+            bodyValue.append(None)
+
+        if self.sheetFunctionality[sheet].get('Timestamp', False):
+            bodyValue.append(datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T',' ').replace('+00:00', ''))
+        else:
+            bodyValue.append(None)
+
         body = {
             'range': range,
             'majorDimension': 'ROWS',
             'values': [
-                [
-                    cmdr,
-                    self.commodity_type_name_to_dropdown(commodity),
-                    amount
-                ]
+                bodyValue
             ]
         }
         logger.debug(body)
@@ -386,16 +426,17 @@ class Sheet:
         spreadsheetCommodity = self.commodity_type_name_to_dropdown(commodity)
         logger.debug(f"Updating {spreadsheetCommodity} to {amount}")
 
-        startingInventory = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_STARTING_INV] or 'A1:C20'}")
-        logger.debug(startingInventory)
-        if len(startingInventory) == 0:
-            logger.error('No Starting Inventory found, bailing')
-            return
-        
-        # Fudge the Buy order a bit to keep the ship inventory total correct, by including any starting inventory
-        for row in startingInventory['values']:
-            if row[1] == spreadsheetCommodity and len(row) == 3:
-                amount += int(row[2])
+        if self.sheetFunctionality[sheet].get('Buy Order Adjustment', False):
+            # Fudge the Buy order a bit to keep the ship inventory total correct, by including any starting inventory
+            startingInventory = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_STARTING_INV] or 'A1:C20'}")
+            logger.debug(startingInventory)
+            if len(startingInventory) == 0:
+                logger.error('No Starting Inventory found, bailing')
+                return
+            
+            for row in startingInventory['values']:
+                if row[1] == spreadsheetCommodity and len(row) == 3:
+                    amount += int(row[2])
 
         # Find our commodity in the list
         buyOrders = self.fetch_data(f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_BUY_ORDERS] or 'F3:H22'}")

@@ -66,12 +66,13 @@ class This:
         self.currentCargo: dict | None = None
         self.carrierCallsign: str | None = None
         self.cargoCapacity: int = 0
+        self.cmdrsAssignedCarrier: str | None = 'Igneels Tooth'
 
         self.clearAuthButton: tk.Button | None = None
         self.settingsClosed: bool = False
 
-        self.carrierAPIEnabled: tk.BooleanVar = tk.BooleanVar(value=config.get_bool('capi_fleetcarrier', default=False))
-        self.lastCarrierQueryTime: tk.IntVar = tk.IntVar(value=config.get_int('fleetcarrierquerytime', default=0))
+        self.carrierAPIEnabled: tk.BooleanVar = tk.BooleanVar(value=config.get_bool('capi_fleetcarrier', default=False))  # Don't change this name, its used by EDMC
+        self.lastCarrierQueryTime: tk.IntVar = tk.IntVar(value=config.get_int('fleetcarrierquerytime', default=0))  # Don't change this name, its used by EDMC
         self.nextUpdateCarrierTime: int = int(time.time())
         self.capiMutex: threading.Semaphore = threading.Semaphore()
 
@@ -86,13 +87,14 @@ class PushRequest:
     TYPE_CMDR_SELL: int = 1
     TYPE_CARRIER_LOC_UPDATE: int = 2
     TYPE_CARRIER_MARKET_UPDATE: int = 3
-    TYPE_CMDR_BUY: int = 4
+    TYPE_CARRIER_CMDR_BUY: int = 4
     TYPE_CARRIER_BUY_SELL_ORDER_UPDATE: int = 5
     TYPE_CARRIER_JUMP: int = 6
     TYPE_SCS_SELL: int = 7
     TYPE_CMDR_UPDATE: int = 8
     TYPE_CARRIER_TRANSFER: int = 9
     TYPE_CARRIER_RECONCILE: int = 10
+    TYPE_CMDR_BUY: int = 11
 
     def __init__(self, cmdr, station: str, reqType: int, data: dict):
         self.cmdr = cmdr
@@ -337,8 +339,8 @@ def process_item(item: PushRequest) -> None:
                 logger.warning('DISABLED by killswitch, ignoring')
                 return
             this.sheet.update_carrier_market(sheetName, item.data)
-        elif item.type == PushRequest.TYPE_CMDR_BUY:
-            logger.info('Processing CMDR Buy request')
+        elif item.type == PushRequest.TYPE_CARRIER_CMDR_BUY:
+            logger.info('Processing Carrier CMDR Buy request')
             if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
                 logger.warning('DISABLED by killswitch, ignoring')
                 return
@@ -389,6 +391,15 @@ def process_item(item: PushRequest) -> None:
                 logger.warning('DISABLED by killswitch, ignoring')
                 return
             this.sheet.reconcile_carrier_market(item.data)
+        elif item.type == PushRequest.TYPE_CMDR_BUY:
+            # This is really only split from the carrier one in case we want to do different things... but could always be merged
+            logger.info('Processing CMDR Buy Request')
+            if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
+                logger.warning('DISABLED by killswitch, ignoring')
+                return
+            commodity = item.data['Type']
+            amount = int(item.data['Count'])
+            this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, inTransit=True)
     except Exception:
         logger.error(traceback.format_exc())
 
@@ -573,10 +584,11 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
         if station in this.sheet.carrierTabNames.keys():
             logger.debug('Station known, creating queue entry')
             # Something for us to do, lets queue it
-            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_BUY, entry))
+            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_CMDR_BUY, entry))
         else:
-            #logger.debug(f'Station ({station}) unknown, skipping')
-            pass
+            logger.debug(f'Station ({station}) unknown, assuming transfer to carrier')
+            # This will get messy
+            this.queue.put(PushRequest(cmdr, this.cmdrsAssignedCarrier, PushRequest.TYPE_CMDR_BUY, entry))
     elif entry['event'] == 'CarrierTradeOrder':
         """
         // BUY Order
