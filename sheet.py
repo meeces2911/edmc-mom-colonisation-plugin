@@ -123,7 +123,10 @@ class Sheet:
                 'startColumnIndex': rangeStart[0],                  # Inclusive
                 'endColumnIndex': rangeEnd[0]                       # Exclusive (ie, + 1 from where you want to finish)
             }
-        
+
+    def _get_datetime_string() -> str:
+        return datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T',' ').replace('+00:00', '')        
+
     def fetch_data(self, query: str) -> any:
         """Actually send a request to Google"""
         base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values/{query}'
@@ -146,11 +149,14 @@ class Sheet:
         except:
             return {}
 
-    def insert_data(self, range: str, body: dict) -> any:
+    def insert_data(self, range: str, body: dict, returnValues: bool = False) -> any:
         """Add/update some data in the spreadsheet"""
         # POST https://sheets.googleapis.com/v4/spreadsheets/SPREADSHEET_ID/values/Sheet1!A1:E1:append?valueInputOption=VALUE_INPUT_OPTION
         # Append adds new rows to the end of the given range
         base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values/{range}:append?valueInputOption=USER_ENTERED'
+        if returnValues:
+            base_url += '&includeValuesInResponse=true'
+
         logger.debug(f'Sending request to POST {base_url}')
         
         # Handle single quotes in sheet names
@@ -367,7 +373,7 @@ class Sheet:
             bodyValue.append(None)
 
         if self.sheetFunctionality[sheet].get('Timestamp', False):
-            bodyValue.append(datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T',' ').replace('+00:00', ''))
+            bodyValue.append(self._get_datetime_string())
         else:
             bodyValue.append(None)
 
@@ -379,7 +385,7 @@ class Sheet:
             ]
         }
         logger.debug(body)
-        self.insert_data(range, body)
+        updatedRange = self.insert_data(range, body, returnValues=True)
     
     def update_carrier_location(self, sheet: str, system: str) -> None:
         """Update the carrier sheet with its current location"""
@@ -523,7 +529,7 @@ class Sheet:
 
             if row[0] == cmdr:
                 row[1] = version
-                row[2] = datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T',' ').replace('+00:00', '')
+                row[2] = self._get_datetime_string()
                 setRow = True
                 break
         
@@ -538,7 +544,7 @@ class Sheet:
                     [
                         cmdr,
                         version,
-                        datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T', ' ').replace('+00:00', '')
+                        self._get_datetime_string()
                     ]
                 ]
             }
