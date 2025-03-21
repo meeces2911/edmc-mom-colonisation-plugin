@@ -251,7 +251,7 @@ def worker() -> None:
 
             ##logger.debug('Checking for next item in the queue... [Queue Empty: ' + str(this.queue.empty()) + ']')
             try:
-                item: PushRequest = this.queue.get(timeout=1)
+                item: PushRequest = this.queue.get(timeout=10)
                 process_item(item)
             except:
                 # Empty, all good, lets go around again
