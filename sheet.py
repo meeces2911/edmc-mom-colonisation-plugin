@@ -7,7 +7,7 @@ import tkinter as tk
 import json
 
 from config import config, appname
-from auth import Auth, LocalHTTPServer
+from auth import Auth, LocalHTTPServer, SPREADSHEET_ID
 from pathlib import Path
 
 plugin_name = Path(__file__).resolve().parent.name
@@ -15,7 +15,7 @@ logger = logging.getLogger(f'{appname}.{plugin_name}')
 
 class Sheet:
     BASE_SHEET_END_POINT = 'https://sheets.googleapis.com'
-    SPREADSHEET_ID = '1dB8Zty_tGoEHFjXQh5kfOeEfL_tsByRyZI8d_sY--4M'
+    SPREADSHEET_ID = SPREADSHEET_ID
 
     LOOKUP_CARRIER_LOCATION = 'Carrier Location'
     LOOKUP_CARRIER_BUY_ORDERS = 'Carrier Buy Orders'
@@ -78,7 +78,7 @@ class Sheet:
             # For now, lets ignore the response entirely and use our known values instead
             res = self.requests_session.get(f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}?fields=sheets/properties(sheetId,title)')
             sheet_list_json = res.json()
-            if res.status_code != requests.code.ok:
+            if res.status_code != requests.codes.ok:
                 res.raise_for_status()
 
             self.handler = None

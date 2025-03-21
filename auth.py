@@ -15,7 +15,8 @@ from config import config, appname
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1dB8Zty_tGoEHFjXQh5kfOeEfL_tsByRyZI8d_sY--4M/edit'
+SPREADSHEET_ID = '1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE'     # This doesn't /really/ beling in here, but its much easier if there is only 1 id to update
+SPREADSHEET_URL = f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit'
 
 ## OAuth
 CLIENT_ID = os.getenv('CLIENT_ID') or '28330765453-6m8337sg9a6m7dtokamos8a30em5v8fr.apps.googleusercontent.com'
