@@ -1,5 +1,15 @@
 # Change Log
 
+## 1.2.0
+
+### What's Changed
+* Added In-Transit Commodity tracking. If you're hauling something to a carrier, and that carrier has `Delivery` tracking enabled, then a new entry will appear on the Carrier tab with the **Delivered** checkbox unticked. Once the cargo has been sold to the Carrier the checkbox will be ticked. (in theory)
+  >Additional quirks with this are, it relies on the CMDR selecting the carrier they are currently filling. If they then choose to sell the cargo elsewhere, the spreadsheet will need manually correcting to remove this. #TODO Can this be solved?
+
+### Known Issues
+* Buy Order table will be updated even when setting a Buy order to something we don't track. No values are changed though
+* Even though the spreadsheet is chosen at authorisation time, its still hardcoded in the plugin to use a specific one.
+
 ## 1.1.2
 
 ### Fixed

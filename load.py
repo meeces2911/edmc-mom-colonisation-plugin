@@ -31,7 +31,7 @@ from auth import Auth, SPREADSHEET_ID
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
-VERSION = '1.1.2'
+VERSION = '1.2.0-beta1'
 _CAPI_RESPONSE_TK_EVENT_NAME = '<<CAPIResponse>>'
 
 KILLSWITCH_CMDR_UPDATE = 'cmdr info update'
@@ -133,7 +133,7 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
     if this.sheet:
         sheetNames: list[str] = this.sheet.sheet_names()
     else:
-        sheetNames: list[str] = ('ERROR')
+        sheetNames: list[str] = ('ERROR',)
         
     with row as cur_row:
         nb.Label(frame, text='Settings Sheet').grid(row=cur_row, column=0, padx=PADX, pady=PADY, sticky=tk.W)
@@ -148,6 +148,14 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
         state=tk.ACTIVE if this.auth.access_token else tk.DISABLED
     )
     this.clearAuthButton.grid(row=row.get(), padx=BUTTONX, pady=PADY, sticky=tk.W)
+
+    ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row.get(), columnspan=4, padx=PADX, pady=PADY+4, sticky=tk.EW)
+
+    with row as cur_row:
+        nb.Label(frame, text='Currently Assigned Carrier').grid(row=cur_row, column=0, padx=PADX, pady=PADY, sticky=tk.W)
+        nb.OptionMenu(
+            frame, this.configSheetName, this.configSheetName.get(), *sheetNames
+        ).grid(row=cur_row, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
 
     return frame
 
