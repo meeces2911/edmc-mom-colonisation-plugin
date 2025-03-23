@@ -354,7 +354,7 @@ class Sheet:
 
     def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int, inTransit: bool = False) -> None:
         """Updates the carrier sheet with some cargo"""
-        logger.debug(f'Building Carrier Sheet Message (inTransit:{inTransit})')
+        logger.debug(f'Building Carrier Sheet Message (inTransit:{inTransit} commodity:{commodity} amount:{amount})')
         range = f"'{sheet}'!A:A"
         bodyValue = [
             cmdr,
@@ -383,10 +383,12 @@ class Sheet:
                     if not update:
                         logger.info('Commodity not tracked as in-transit, skipping adding new row')
                         return
-                
-                    
+            else:
+                logger.debug('Not in transit, and Buying from the carrier, then mark Delivered as True')
+                bodyValue.append(True)
         else:
             if not inTransit:
+                logger.debug('Not in Transit, skipping setting value')
                 bodyValue.append(None)
             else:
                 # We're buying from a station, but delivery tracking is disabled, so just don't write anything to the sheet
