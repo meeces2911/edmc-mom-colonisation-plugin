@@ -40,6 +40,7 @@ class Sheet:
         self.commodityNamesToNice: dict[str, str] = {}
         self.commodityNamesFromNice: dict[str, str] = {}
         self.sheetFunctionality: dict[str, dict[str, bool]] = {}
+        self.inTransitCommodities: dict[str, tuple[int, str]] = {}
 
         if not config.shutting_down:
             # If shutdown is called during the intial stages of auth, we won't have been initialised yet
@@ -106,7 +107,7 @@ class Sheet:
                 rowStr += char
         return [colIdx, int(rowStr)-1]
     
-    def _convert_A1_range_to_idx_range(self, a1Str: str, skipHeaderRow: bool) -> dict:
+    def _convert_A1_range_to_idx_range(self, a1Str: str, skipHeaderRow: bool = False) -> dict:
         # 'EDMC Plugin Settings'!E1:G4
         splits = a1Str.split('!')
         sheetName = splits[0][1:-1].replace("''", "'")              # 'Explorer''s Rest' -> Explorer's Rest
@@ -124,7 +125,7 @@ class Sheet:
                 'endColumnIndex': rangeEnd[0]                       # Exclusive (ie, + 1 from where you want to finish)
             }
 
-    def _get_datetime_string() -> str:
+    def _get_datetime_string(self) -> str:
         return datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T',' ').replace('+00:00', '')        
 
     def fetch_data(self, query: str) -> any:
@@ -349,33 +350,61 @@ class Sheet:
 
     def dropdown_to_commodity_type_name(self, commodity: str) -> str:
         """Returns the specific commodity name thats matches the one in the spreadsheet"""
-        return self.commodityNamesFromNice.get(commodity, commodity)
+        return self.commodityNamesFromNice.get(commodity, commodity.lower())
 
     def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int, inTransit: bool = False) -> None:
         """Updates the carrier sheet with some cargo"""
-        logger.debug('Building Carrier Sheet Message')
+        logger.debug(f'Building Carrier Sheet Message (inTransit:{inTransit})')
         range = f"'{sheet}'!A:A"
         bodyValue = [
             cmdr,
             self.commodity_type_name_to_dropdown(commodity),
             amount
         ]
-
-        #TODO: If inTransit, then record the new rows for updating later when we actually put them on the carrier
+        update = False
 
         if self.sheetFunctionality[sheet].get('Delivery', False):
-            if amount < 0:
-                # If we're buying *from* the carrier than it should always count as 'delivered'
-                bodyValue.append(True)
-            else:
-                bodyValue.append(inTransit)
+            if inTransit or amount > 0:
+                logger.debug(f'Checking for existing row for {commodity}')
+                existingValue = self.inTransitCommodities.pop(commodity, None)
+                if existingValue:
+                    logger.debug('Existing in-transit row found, updating')
+                    range = existingValue[1]
+                    if inTransit:
+                        bodyValue[2] += existingValue[0]
+                    update = True
+                else:
+                    logger.debug('Not found, creating new one')
+
+                bodyValue.append(not inTransit)
+
+                if amount < 0 and inTransit:
+                    # We must be selling to a different station. If we don't actually know about this commodity, then there is no need to add an entry into the sheet
+                    if not update:
+                        logger.info('Commodity not tracked as in-transit, skipping adding new row')
+                        return
+                
+                    
         else:
-            bodyValue.append(None)
+            if not inTransit:
+                bodyValue.append(None)
+            else:
+                # We're buying from a station, but delivery tracking is disabled, so just don't write anything to the sheet
+                logger.info('Delivery Tracking disabled, skipping adding new row')
+                return
 
         if self.sheetFunctionality[sheet].get('Timestamp', False):
             bodyValue.append(self._get_datetime_string())
         else:
             bodyValue.append(None)
+
+        if update and bodyValue[2] == 0:
+            # Clear the row
+            bodyValue = ['', '', '']
+            if self.sheetFunctionality[sheet].get('Delivery', False):
+                bodyValue.append('')
+            if self.sheetFunctionality[sheet].get('Timestamp', False):
+                bodyValue.append('')
 
         body = {
             'range': range,
@@ -385,7 +414,46 @@ class Sheet:
             ]
         }
         logger.debug(body)
-        updatedRange = self.insert_data(range, body, returnValues=True)
+        if not update:
+            response = self.insert_data(range, body, returnValues=True)
+        else:
+            response = self.update_data(range, body)
+        
+        # Now format the row we just created
+        if self.sheetFunctionality[sheet].get('Delivery', False):
+            logger.debug('Formatting Delivery cell')
+            updates = response.get('updates', response)
+            updatedRange = updates.get('updatedRange')
+            if updatedRange:
+                #logger.debug('updatedRange section found')
+                # Keep track of our in-transit commodities
+                if inTransit:
+                    self.inTransitCommodities[commodity] = (int(bodyValue[2]), updatedRange)
+                    logger.debug(f'New in-transit commodity added: {self.inTransitCommodities}')
+
+                range = self._convert_A1_range_to_idx_range(updatedRange)
+                # We just want to update Column D
+                range['startColumnIndex'] += 3
+                range['endColumnIndex'] = int(range['startColumnIndex']) + 1
+                sheetUpdates: list = [
+                    {
+                        'repeatCell': {
+                            'range': range,
+                            'cell': {
+                                'dataValidation': {
+                                    'condition': {
+                                        'type': 'BOOLEAN'
+                                    }
+                                }
+                            },
+                            'fields': 'dataValidation.condition'
+                        }
+                    }
+                ]
+                self.update_sheet(sheetUpdates)   
+            else:
+                logger.error('No updatedRange found in response')
+        
     
     def update_carrier_location(self, sheet: str, system: str) -> None:
         """Update the carrier sheet with its current location"""
@@ -575,8 +643,6 @@ class Sheet:
             ]
             self.update_sheet(sheetUpdates)
 
-    
-
     def update_cmdr_attributes(self, cmdr: str, cargoCapacity: int) -> None:
         """Updates anything we wnat to track about the current CMDR"""
         logger.debug('Building CMDR Update Message')
@@ -707,3 +773,37 @@ class Sheet:
         logger.debug(startingInventory)
         self.update_data(buyOrders['range'], buyOrders)
         self.update_data(startingInventory['range'], startingInventory)
+
+    def recalculate_in_transit(self, sheet: str, cmdr: str, clear: bool = False) -> None:
+        """Checks the current carrier list for any items that might still be in transit since the last time we started"""
+        if not sheet:
+            logger.error(f'Carrier {sheet} not known, bailing')
+        
+        if not self.sheetFunctionality[sheet].get('Delivery', False):
+            logger.debug('Sheet not tracking delivery, so skipping in-transit check')
+            return
+        
+        if clear:
+            logger.debug("Clearing in-transit commodities")
+            self.inTransitCommodities = {}
+            return
+
+        data = self.fetch_data(f"'{sheet}'!A:E")
+        logger.debug(data)
+
+        rowIdx = 0
+        for row in data['values']:
+            rowIdx += 1
+            if len(row) < 4:
+                continue    # Skip bad rows
+            if row[0] != cmdr:
+                continue    # Not one we care about
+            if row[3] == 'FALSE':
+                # Something thats in transit!
+                # NB. To keep things simple, lets enforce only 1 commodity of the same type can be in transit at once
+                commodity = self.dropdown_to_commodity_type_name(row[1])
+                self.inTransitCommodities[commodity] = (int(row[2]), f"'{sheet}'!A{rowIdx}:E{rowIdx}")
+
+        logger.debug(f'Commodities in transit: {self.inTransitCommodities}')
+
+    
