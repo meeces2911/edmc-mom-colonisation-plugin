@@ -363,7 +363,7 @@ class Sheet:
         ]
         update = False
 
-        if self.sheetFunctionality[sheet].get('Delivery', False):
+        if self.sheetFunctionality.get(sheet, {}).get('Delivery', False):
             if inTransit or amount > 0:
                 logger.debug(f'Checking for existing row for {commodity}')
                 existingValue = self.inTransitCommodities.pop(commodity, None)
@@ -394,8 +394,8 @@ class Sheet:
                 # We're buying from a station, but delivery tracking is disabled, so just don't write anything to the sheet
                 logger.info('Delivery Tracking disabled, skipping adding new row')
                 return
-
-        if self.sheetFunctionality[sheet].get('Timestamp', False):
+                
+        if self.sheetFunctionality.get(sheet, {}).get('Timestamp', False):
             bodyValue.append(self._get_datetime_string())
         else:
             bodyValue.append(None)
@@ -433,7 +433,9 @@ class Sheet:
                     self.inTransitCommodities[commodity] = (int(bodyValue[2]), updatedRange)
                     logger.debug(f'New in-transit commodity added: {self.inTransitCommodities}')
 
+                logger.debug('Converting updatedRange to numeric indices')
                 range = self._convert_A1_range_to_idx_range(updatedRange)
+                logger.debug(range)
                 # We just want to update Column D
                 range['startColumnIndex'] += 3
                 range['endColumnIndex'] = int(range['startColumnIndex']) + 1
