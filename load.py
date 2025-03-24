@@ -25,7 +25,7 @@ from ttkHyperlinkLabel import HyperlinkLabel
 from prefs import AutoInc
 
 from sheet import Sheet
-from auth import Auth
+from auth import Auth, SPREADSHEET_ID
 
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
@@ -119,7 +119,7 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
 
     with row as cur_row:
         HyperlinkLabel(
-            frame, text='MERC Expedition Needs', background=nb.Label().cget('background'), url='https://docs.google.com/spreadsheets/d/1dB8Zty_tGoEHFjXQh5kfOeEfL_tsByRyZI8d_sY--4M/edit',
+            frame, text='MERC Expedition Needs', background=nb.Label().cget('background'), url=f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit',
             underline=True
         ).grid(row=cur_row, columnspan=2, padx=PADX, pady=PADY+4, sticky=tk.W)    
         nb.Label(frame, text='Version %s' % VERSION).grid(row=cur_row, column=3, padx=PADX, pady=PADY+4, sticky=tk.W)
