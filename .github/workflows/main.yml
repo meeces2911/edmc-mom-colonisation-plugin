@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,11 +19,22 @@ jobs:
           sed -i "s/CLIENT_SECRET = os.getenv('CLIENT_SECRET') or ''/CLIENT_SECRET = '${{secrets.CLIENT_SECRET}}'/g" auth.py
       - name: Package
         run: |
-          md -p artifact/mom_colonisation_tracker
-          copy *.py artifact/mom_colonisation_tracker/
-          zip release.zip ./artifact/* -r
+          mkdir -p artifact/mom_colonisation_tracker
+          cp *.py artifact/mom_colonisation_tracker/
+          cd artifact
+          zip ../mom_colonisation_tracker.zip ./* -r
+      - name: Get Release Number
+        id: get-release-number
+        run: |
+          echo "release-number=$(echo "${{github.ref_name}}" | cut -c 2-)" >> $GITHUB_OUTPUT
+      - name: Split out Changelog
+        id: split-out-changelog
+        run: |
+         cat CHANGELOG.md | grep -ozP '(?sU)(.+## 1\.1\.1.+)## \d' | head -n -1 > Partial-CHANGELOG
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release.zip
-          body_path: CHANGELOG.md
+          files: mom_colonisation_tracker.zip
+          name: ${{steps.get-release-number.outputs.release-number}}
+          body_path: Partial-CHANGELOG
+          
