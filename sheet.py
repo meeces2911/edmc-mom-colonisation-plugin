@@ -105,7 +105,7 @@ class Sheet:
     def _convert_A1_range_to_idx_range(self, a1Str: str, skipHeaderRow: bool) -> dict:
         # 'EDMC Plugin Settings'!E1:G4
         splits = a1Str.split('!')
-        sheetName = splits[0].replace("'", '')                      # 'EDMC Plugin Settings'
+        sheetName = splits[0][1:-1].replace("''", "'")              # 'Explorer''s Rest' -> Explorer's Rest
         ranges = splits[1].split(':')
         rangeStart = self._A1_to_index(ranges[0])                   # E1 -> col:4, row:0
         rangeEnd = self._A1_to_index(ranges[1])                     # G4 -> col:6, row:3
@@ -120,7 +120,6 @@ class Sheet:
                 'endColumnIndex': rangeEnd[0]                       # Exclusive (ie, + 1 from where you want to finish)
             }
         
-
     def fetch_data(self, query: str) -> any:
         """Actually send a request to Google"""
         base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values/{query}'
@@ -149,6 +148,10 @@ class Sheet:
         # Append adds new rows to the end of the given range
         base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values/{range}:append?valueInputOption=USER_ENTERED'
         logger.debug(f'Sending request to POST {base_url}')
+        
+        # Handle single quotes in sheet names
+        if body.get('range'):
+            body['range'] = body['range'].replace("''", "'")
         logger.debug(json.dumps(body))
         
         token_refresh_attempted = False
@@ -173,6 +176,10 @@ class Sheet:
         # PUT https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}/values/{range}?valueInputOption=VALUE_INPUT_OPTION
         base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values/{range}?valueInputOption=USER_ENTERED'
         logger.debug(f'Sending request to PUT {base_url}')
+
+        # Handle single quotes in sheet names
+        if body.get('range'):
+            body['range'] = body['range'].replace("''", "'")
         logger.debug(json.dumps(body))
 
         token_refresh_attempted = False
@@ -412,30 +419,30 @@ class Sheet:
         self.buyOrdersIveSet[commodity.lower()] = int(time.time())
 
         # Also record that it was updated by the carrier owner
-        configSheet = f"'{self.configSheetName.get()}'"
-        marketSettings = self.fetch_data(f'{configSheet}!A18:B{18 + len(self.marketUpdatesSetBy)}')
-        logger.debug(json.dumps(marketSettings))
+        #configSheet = f"'{self.configSheetName.get()}'"
+        #marketSettings = self.fetch_data(f'{configSheet}!A18:B{18 + len(self.marketUpdatesSetBy)}')
+        #logger.debug(json.dumps(marketSettings))
         
-        if self.marketUpdatesSetBy.get(station):
-            for setting in marketSettings['values']:
-                if setting[0] == station:
-                    setting[1] = 'TRUE'
+        #if self.marketUpdatesSetBy.get(station):
+        #    for setting in marketSettings['values']:
+        #        if setting[0] == station:
+        #            setting[1] = 'TRUE'
 
-            logger.debug(f'New Markets settings: {marketSettings}')
-            self.update_data(marketSettings['range'], marketSettings)
-        else:
-            logger.debug(f'Unknown Market settings for ({station}), adding...')
-            range = f'{configSheet}!A18'
-            body = {
-                'range': range,
-                'majorDimension': 'ROWS',
-                'values': [
-                    [
-                        station,
-                        'TRUE'
-                    ]
-                ]
-            }
+        #    logger.debug(f'New Markets settings: {marketSettings}')
+        #    self.update_data(marketSettings['range'], marketSettings)
+        #else:
+        #    logger.debug(f'Unknown Market settings for ({station}), adding...')
+        #    range = f'{configSheet}!A18'
+        #    body = {
+        #        'range': range,
+        #        'majorDimension': 'ROWS',
+        #        'values': [
+        #            [
+        #                station,
+        #                'TRUE'
+        #            ]
+        #        ]
+        #    }
             #self.insert_data(range, body)
         
     def add_to_scs_sheet(self, cmdr: str, system: str, commodity: str, amount: int) -> None:
