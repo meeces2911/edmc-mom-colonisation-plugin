@@ -819,6 +819,7 @@ class Sheet:
         """Checks the current carrier list for any items that might still be in transit since the last time we started"""
         if not sheet:
             logger.error(f'Carrier {sheet} not known, bailing')
+            return
         
         if not self.sheetFunctionality[sheet].get('Delivery', False):
             logger.debug('Sheet not tracking delivery, so skipping in-transit check')
