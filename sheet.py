@@ -397,12 +397,13 @@ class Sheet:
                 logger.debug(f'Checking for existing row for {commodity}')
                 existingValue = self.inTransitCommodities.pop(commodity, None)
                 if existingValue:
-                    logger.debug('Existing in-transit row found, updating')
-                    if inTransit or (not inTransit and range.startswith(f"'{sheet}'")):
-                        # Buying additional cargo for something thats already in-transit, just update the existing row
-                        # Selling cargo to the carrier, just update the existing in-transit row
+                    if inTransit or (not inTransit and existingValue[1].startswith(f"'{sheet}'")):
+                        logger.debug('Existing in-transit row found, updating')
+                        # Buying or Selling cargo to the carrier, just update the existing in-transit row
                         range = existingValue[1]
-                        bodyValue[2] += existingValue[0]
+                        if inTransit:
+                            # Buying additional cargo for something thats already in-transit, just update the existing row with the additional value
+                            bodyValue[2] += existingValue[0]
                         update = True
                     else:
                         # We've recorded an in-transit move for one carrier, then dropped it off at the next... err... panic?!
