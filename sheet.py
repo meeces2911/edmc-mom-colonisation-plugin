@@ -248,7 +248,7 @@ class Sheet:
         data = self.fetch_data(f'{sheet}!A:C')
         carriers = self.fetch_data(f'{sheet}!J:L')
         markets = self.fetch_data(f'{sheet}!O:P')
-        features = self.fetch_data(f'{sheet}!S:U')
+        features = self.fetch_data(f'{sheet}!S:V')
         #logger.debug(data)
         #logger.debug(carriers)
         #logger.debug(markets)
@@ -457,7 +457,6 @@ class Sheet:
                 self.update_sheet(sheetUpdates)   
             else:
                 logger.error('No updatedRange found in response')
-        
     
     def update_carrier_location(self, sheet: str, system: str) -> None:
         """Update the carrier sheet with its current location"""
@@ -505,6 +504,7 @@ class Sheet:
         logger.debug(f"Updating {spreadsheetCommodity} to {amount}")
 
         if self.sheetFunctionality[sheet].get('Buy Order Adjustment', False):
+            logger.debug('Adjust Buy Order is set, fudging the value to include the Starting Inventory')
             # Fudge the Buy order a bit to keep the ship inventory total correct, by including any starting inventory
             startingInventory = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_STARTING_INV] or 'A1:C20'}")
             logger.debug(startingInventory)

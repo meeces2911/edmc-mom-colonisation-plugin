@@ -656,6 +656,8 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
         if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
             logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
             this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE, entry))
+        else:
+            logger.debug(f'Carrier "{this.carrierCallsign}" not known, skipping market update')
     elif entry['event'] == 'CarrierJumpRequest' or entry['event'] == 'CarrierJumpCancelled':
         """
         {
