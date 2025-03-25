@@ -360,13 +360,18 @@ class Sheet:
             logger.error(traceback.format_exc())
 
         self.killswitches['last updated'] = time.time()
-        #logger.debug(self.killswitches)
-        #logger.debug(self.carrierTabNames)
-        #logger.debug(self.marketUpdatesSetBy)
-        #logger.debug(self.lookupRanges)
-        #logger.debug(self.commodityNamesToNice)
-        #logger.debug(self.commodityNamesFromNice)
-        logger.debug(self.sheetFunctionality)
+
+    def populate_cmdr_data(self) -> None:
+        """Populate CMDR specific data on start up"""
+        # This shouldn't be called more than once, as we just want to pre-populate some stuff after a shutdown
+        try:
+            
+            # TODO: Fetch any in-transit cargo
+            # TODO: Fetch current assign carrier
+            pass
+
+        except Exception:
+            logger.error(traceback.format_exc())
 
     def sheet_names(self) -> list[str]:
         if self.sheets:
