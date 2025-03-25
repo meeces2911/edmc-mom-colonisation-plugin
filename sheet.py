@@ -369,10 +369,17 @@ class Sheet:
                 existingValue = self.inTransitCommodities.pop(commodity, None)
                 if existingValue:
                     logger.debug('Existing in-transit row found, updating')
-                    range = existingValue[1]
-                    if inTransit:
+                    if inTransit or (not inTransit and range.startswith(f"'{sheet}'")):
+                        # Buying additional cargo for something thats already in-transit, just update the existing row
+                        # Selling cargo to the carrier, just update the existing in-transit row
+                        range = existingValue[1]
                         bodyValue[2] += existingValue[0]
-                    update = True
+                        update = True
+                    else:
+                        # We've recorded an in-transit move for one carrier, then dropped it off at the next... err... panic?!
+                        logger.warning('In-Transit row found, but for a different carrier, ignoring')
+                        # Should we clear the in-transit record ... or just leave it?
+                        # We might just be doing a partial delivery
                 else:
                     logger.debug('Not found, creating new one')
 
@@ -790,6 +797,8 @@ class Sheet:
         if clear:
             logger.debug("Clearing in-transit commodities")
             self.inTransitCommodities = {}
+            logger.warning('Clearing in-transit commodities, but leaving spreadsheet rows')
+            #TODO: Also clean up spreadsheet rows ?
             return
 
         data = self.fetch_data(f"'{sheet}'!A:E")
