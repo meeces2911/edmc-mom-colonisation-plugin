@@ -5,6 +5,7 @@ import datetime
 import webbrowser
 import tkinter as tk
 import json
+import traceback
 
 from config import config, appname
 from auth import Auth, LocalHTTPServer, SPREADSHEET_ID
@@ -298,8 +299,8 @@ class Sheet:
                 self.marketUpdatesSetBy[row[0]] = {
                         'setByOwner': row[1] == 'TRUE'
                     }
-        except Exception as ex:
-            logger.error(ex)
+        except Exception:
+            logger.error(traceback.format_exc())
 
         self.killswitches['last updated'] = time.time()
         #logger.debug(self.killswitches)
@@ -475,6 +476,10 @@ class Sheet:
         
         setRow = False
         for row in data['values']:
+            # Skip blank rows
+            if len(row) == 0:
+                continue
+
             if row[0] == cmdr:
                 row[1] = version
                 row[2] = datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T',' ').replace('+00:00', '')
@@ -498,7 +503,9 @@ class Sheet:
             }
             res = self.insert_data(range, body)
         if res:
-            range = self._convert_A1_range_to_idx_range(res['updatedRange'], skipHeaderRow=True)
+            updates = res.get('updates', res)
+            updatedRange = updates.get('updatedRange')
+            range = self._convert_A1_range_to_idx_range(updatedRange, skipHeaderRow=True)
             # We just want to update Column G
             range['startColumnIndex'] += 2
             range['endColumnIndex'] = int(range['startColumnIndex']) + 1

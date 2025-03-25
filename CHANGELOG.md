@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.1.2
+
+### Fixed
+* A silent crash for new CMDRs using the plugin for the first time and it trying to record usage stats. (Restarting EDMC would have fixed the problem, but there is currently no way for CMDRs to know something has gone wrong)
+
 ## 1.1.1
 
 ### Fixed

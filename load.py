@@ -7,6 +7,7 @@ import logging
 import threading
 import tkinter as tk
 import requests
+import traceback
 
 from tkinter import ttk
 from threading import Lock, Thread
@@ -30,7 +31,7 @@ from auth import Auth, SPREADSHEET_ID
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
-VERSION = '1.1.1'
+VERSION = '1.1.2'
 _CAPI_RESPONSE_TK_EVENT_NAME = '<<CAPIResponse>>'
 
 KILLSWITCH_CMDR_UPDATE = 'cmdr info update'
@@ -207,45 +208,66 @@ def worker() -> None:
             logger.debug("Main: Shutting down, existing thread")
             return None
     
-    initial_startup()
-
-    # Then start the main loop
-    logger.debug("Startup complete, entering main loop")
     while True:
-        # Do some stuff
-        
-        # Auth token has been cleared via the button in settings
-        if not this.auth.access_token:
-            while not this.settingsClosed:
-                if config.shutting_down:
-                    logger.debug("Main: Shutting down, exiting thread")
-                    return None
-                # Spin
-                time.sleep(1 / 10)
-
-            this.auth.refresh()
-
-        while process_kill_siwtches():
-            logger.warning('Killsiwtch Active, reporting paused... [retrying in 60 seconds]')
-            for i in range(1, 60):
-                ## Don't sleep for the full 60 seconds here, in case shutdown is called, we need to quit ASAP
+        try:
+            initial_startup()
+            break
+        except Exception:
+            logger.error(traceback.format_exc())
+            # wait 30 seconds and try again
+            for i in range(1, 30):
                 time.sleep(1)
                 if config.shutting_down:
                     logger.debug('Main: Shutting down, exiting thread')
                     return None
 
-        ##logger.debug('Checking for next item in the queue... [Queue Empty: ' + str(this.queue.empty()) + ']')
+    # Then start the main loop
+    logger.debug("Startup complete, entering main loop")
+    while True:
+        # Do some stuff
         try:
-            item: PushRequest = this.queue.get(timeout=1)
-            process_item(item)
-        except:
-            # Empty, all good, lets go around again
-            pass
+        
+            # Auth token has been cleared via the button in settings
+            if not this.auth.access_token:
+                while not this.settingsClosed:
+                    if config.shutting_down:
+                        logger.debug("Main: Shutting down, exiting thread")
+                        return None
+                    # Spin
+                    time.sleep(1 / 10)
 
-        if config.shutting_down:
-            logger.debug('Main: Shutting down, exiting thread')
-            this.auth = None
-            return None
+                this.auth.refresh()
+
+            while process_kill_siwtches():
+                logger.warning('Killsiwtch Active, reporting paused... [retrying in 60 seconds]')
+                for i in range(1, 60):
+                    ## Don't sleep for the full 60 seconds here, in case shutdown is called, we need to quit ASAP
+                    time.sleep(1)
+                    if config.shutting_down:
+                        logger.debug('Main: Shutting down, exiting thread')
+                        return None
+
+            ##logger.debug('Checking for next item in the queue... [Queue Empty: ' + str(this.queue.empty()) + ']')
+            try:
+                item: PushRequest = this.queue.get(timeout=1)
+                process_item(item)
+            except:
+                # Empty, all good, lets go around again
+                pass
+
+            if config.shutting_down:
+                logger.debug('Main: Shutting down, exiting thread')
+                this.auth = None
+                return None
+        
+        except Exception:
+            logger.error(traceback.format_exc())
+            # wait 30 seconds and try again
+            for i in range(1, 30):
+                time.sleep(1)
+                if config.shutting_down:
+                    logger.debug('Main: Shutting down, exiting thread')
+                    return None
 
 def initial_startup() -> None:
     """'First' startup code. Also called after settings have changed"""
@@ -367,8 +389,8 @@ def process_item(item: PushRequest) -> None:
                 logger.warning('DISABLED by killswitch, ignoring')
                 return
             this.sheet.reconcile_carrier_market(item.data)
-    except Exception as ex:
-        logger.error(ex.with_traceback())
+    except Exception:
+        logger.error(traceback.format_exc())
 
 def process_scs_market_updates(cmdr: str, station: str, data: dict) -> None:
     """Because SCS transfers don't provide the same journal info, we'll have to get a bit more creative"""
@@ -511,8 +533,8 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 with path.open('rb') as dataFile:
                     marketData = json.load(dataFile)
                     this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_MARKET_UPDATE, marketData))
-            except Exception as ex:
-                logger.error(ex)
+            except Exception:
+                logger.error(traceback.format_exc())
     elif entry['event'] == 'MarketSell':
         """
         {
