@@ -261,7 +261,7 @@ def worker() -> None:
 
             ##logger.debug('Checking for next item in the queue... [Queue Empty: ' + str(this.queue.empty()) + ']')
             try:
-                item: PushRequest = this.queue.get(timeout=10)
+                item: PushRequest = this.queue.get(timeout=1)
                 process_item(item)
             except:
                 # Empty, all good, lets go around again
@@ -329,102 +329,106 @@ def process_item(item: PushRequest) -> None:
     try:
         logger.debug(f'Processing item: [{item.type}] {item.data}')
         sheetName = this.sheet.carrierTabNames.get(item.station)
-        if item.type == PushRequest.TYPE_CMDR_SELL:
-            logger.info('Processing CMDR Sell request')
-            if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
-                logger.warning('DISABLED by killswitch, ignoring')
-                return
-            
-            inTransit = False
-            commodity = item.data['Type']
-            amount = int(item.data['Count'])
+        
+        match item.type:
+            case PushRequest.TYPE_CMDR_SELL:
+                logger.info('Processing CMDR Sell request')
+                if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
+                    logger.warning('DISABLED by killswitch, ignoring')
+                    return
+                
+                inTransit = False
+                commodity = item.data['Type']
+                amount = int(item.data['Count'])
 
-            if not sheetName:
-                sheetName = this.sheet.carrierTabNames.get(this.cmdrsAssignedCarrier)
-                logger.info(f'Carrier not known, assuming in-transit for {sheetName}')
-                inTransit = True
-                amount = amount * -1    # Selling, so carrier should 'loose' this amount (even, if it never really gained it)
-            
-            this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, inTransit=inTransit)
-        elif item.type == PushRequest.TYPE_CARRIER_LOC_UPDATE:
-            logger.info('Processing Carrier Location update')
-            if this.killswitches.get(KILLSWITCH_CARRIER_LOC, 'true') != 'true':
-                logger.warning('DISABLED by killswitch, ignoring')
-                return
-            this.sheet.update_carrier_location(sheetName, item.data)
-        elif item.type == PushRequest.TYPE_CARRIER_MARKET_UPDATE:
-            logger.info('Processing Carrier Market update')
-            if this.killswitches.get(KILLSWITCH_CARRIER_MARKET, 'true') != 'true':
-                logger.warning('DISABLED by killswitch, ignoring')
-                return
-            this.sheet.update_carrier_market(sheetName, item.data)
-        elif item.type == PushRequest.TYPE_CARRIER_CMDR_BUY:
-            logger.info('Processing Carrier CMDR Buy request')
-            if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
-                logger.warning('DISABLED by killswitch, ignoring')
-                return
-            commodity = item.data['Type']
-            amount = int(item.data['Count']) * -1   # We're removing from the carrier
-            this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount)
-        elif item.type == PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE:
-            logger.info('Processing Carrier Buy/Sell Order update')
-            logger.debug(this.killswitches)
-            if this.killswitches.get(KILLSWITCH_CARRIER_BUYSELL_ORDER, 'true') != 'true':
-                logger.warning('DISABLED by killswitch, ignoring')
-                return
-            commodity = item.data['Commodity']
-            amount = 0
-            # Currently, only track Buy orders
-            if item.data.get('PurchaseOrder'):
-                amount = int(item.data['PurchaseOrder'])
-            this.sheet.update_carrier_market_entry(sheetName, item.station, commodity, amount)
-        elif item.type == PushRequest.TYPE_CARRIER_JUMP:
-            logger.info('Processing Carrier Jump update')
-            if this.killswitches.get(KILLSWITCH_CARRIER_JUMP, 'true') != 'true':
-                logger.warning('DISABLED by killswitch, ignoring')
-                return
-            destination = item.data.get('Body')
-            departTime = item.data.get('DepartureTime')
-            this.sheet.update_carrier_jump_location(sheetName, destination, departTime)
-        elif item.type == PushRequest.TYPE_SCS_SELL:
-            logger.info('Processing SCS Sell request')
-            if this.killswitches.get(KILLSWITCH_SCS_SELL, 'true') != 'true':
-                logger.warning('DISABLED by killswitch, ignoring')
-                return
-            process_scs_market_updates(item.cmdr, item.station, item.data)
-        elif item.type == PushRequest.TYPE_CMDR_UPDATE:
-            logger.info('Processing CMDR Update')
-            if this.killswitches.get(KILLSWITCH_CMDR_UPDATE, 'true') != 'true':
-                logger.warning('DISABLED by killswitch, ignoring')
-                return
-            this.sheet.update_cmdr_attributes(item.cmdr, this.cargoCapacity)
-        elif item.type == PushRequest.TYPE_CARRIER_TRANSFER:
-            logger.info('Processing Carrier Transfer request')
-            if this.killswitches.get(KILLSWITCH_CARRIER_TRANSFER, 'true') != 'true':
-                logger.warning('DISABLED by killswitch, ignoring')
-                return
-            process_carrier_transfer(sheetName, item.cmdr, item.data)
-        elif item.type == PushRequest.TYPE_CARRIER_RECONCILE:
-            logger.info('Processing Carrier Reconcile request')
-            if this.killswitches.get(KILLSWITCH_CARRIER_RECONCILE, 'true') != 'true':
-                logger.warning('DISABLED by killswitch, ignoring')
-                return
-            this.sheet.reconcile_carrier_market(item.data)
-        elif item.type == PushRequest.TYPE_CMDR_BUY:
-            # This is really only split from the carrier one in case we want to do different things... but could always be merged
-            logger.info(f'Processing CMDR Buy Request, assuming in-transit for {sheetName}')
-            if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
-                logger.warning('DISABLED by killswitch, ignoring')
-                return
-            commodity = item.data['Type']
-            amount = int(item.data['Count'])
-            this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, inTransit=True)
-        elif item.type == PushRequest.TYPE_CARRIER_INTRANSIT_RECALC:
-            logger.info('Processing Carrier In-Transit Recalculate request')
-            resetCargo = False
-            if item.data:
-                resetCargo = item.data.get('clear', False)
-            this.sheet.recalculate_in_transit(sheetName, item.cmdr, clear=resetCargo)
+                if not sheetName:
+                    sheetName = this.sheet.carrierTabNames.get(this.cmdrsAssignedCarrier)
+                    logger.info(f'Carrier not known, assuming in-transit for {sheetName}')
+                    inTransit = True
+                    amount = amount * -1    # Selling, so carrier should 'loose' this amount (even, if it never really gained it)
+                
+                this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, inTransit=inTransit)
+            case PushRequest.TYPE_CARRIER_LOC_UPDATE:
+                logger.info('Processing Carrier Location update')
+                if this.killswitches.get(KILLSWITCH_CARRIER_LOC, 'true') != 'true':
+                    logger.warning('DISABLED by killswitch, ignoring')
+                    return
+                this.sheet.update_carrier_location(sheetName, item.data)
+            case PushRequest.TYPE_CARRIER_MARKET_UPDATE:
+                logger.info('Processing Carrier Market update')
+                if this.killswitches.get(KILLSWITCH_CARRIER_MARKET, 'true') != 'true':
+                    logger.warning('DISABLED by killswitch, ignoring')
+                    return
+                this.sheet.update_carrier_market(sheetName, item.data)
+            case PushRequest.TYPE_CARRIER_CMDR_BUY:
+                logger.info('Processing Carrier CMDR Buy request')
+                if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
+                    logger.warning('DISABLED by killswitch, ignoring')
+                    return
+                commodity = item.data['Type']
+                amount = int(item.data['Count']) * -1   # We're removing from the carrier
+                this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount)
+            case PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE:
+                logger.info('Processing Carrier Buy/Sell Order update')
+                logger.debug(this.killswitches)
+                if this.killswitches.get(KILLSWITCH_CARRIER_BUYSELL_ORDER, 'true') != 'true':
+                    logger.warning('DISABLED by killswitch, ignoring')
+                    return
+                commodity = item.data['Commodity']
+                amount = 0
+                # Currently, only track Buy orders
+                if item.data.get('PurchaseOrder'):
+                    amount = int(item.data['PurchaseOrder'])
+                this.sheet.update_carrier_market_entry(sheetName, item.station, commodity, amount)
+            case PushRequest.TYPE_CARRIER_JUMP:
+                logger.info('Processing Carrier Jump update')
+                if this.killswitches.get(KILLSWITCH_CARRIER_JUMP, 'true') != 'true':
+                    logger.warning('DISABLED by killswitch, ignoring')
+                    return
+                destination = item.data.get('Body')
+                departTime = item.data.get('DepartureTime')
+                this.sheet.update_carrier_jump_location(sheetName, destination, departTime)
+            case PushRequest.TYPE_SCS_SELL:
+                logger.info('Processing SCS Sell request')
+                if this.killswitches.get(KILLSWITCH_SCS_SELL, 'true') != 'true':
+                    logger.warning('DISABLED by killswitch, ignoring')
+                    return
+                process_scs_market_updates(item.cmdr, item.station, item.data)
+            case PushRequest.TYPE_CMDR_UPDATE:
+                logger.info('Processing CMDR Update')
+                if this.killswitches.get(KILLSWITCH_CMDR_UPDATE, 'true') != 'true':
+                    logger.warning('DISABLED by killswitch, ignoring')
+                    return
+                this.sheet.update_cmdr_attributes(item.cmdr, this.cargoCapacity)
+            case PushRequest.TYPE_CARRIER_TRANSFER:
+                logger.info('Processing Carrier Transfer request')
+                if this.killswitches.get(KILLSWITCH_CARRIER_TRANSFER, 'true') != 'true':
+                    logger.warning('DISABLED by killswitch, ignoring')
+                    return
+                process_carrier_transfer(sheetName, item.cmdr, item.data)
+            case PushRequest.TYPE_CARRIER_RECONCILE:
+                logger.info('Processing Carrier Reconcile request')
+                if this.killswitches.get(KILLSWITCH_CARRIER_RECONCILE, 'true') != 'true':
+                    logger.warning('DISABLED by killswitch, ignoring')
+                    return
+                this.sheet.reconcile_carrier_market(item.data)
+            case PushRequest.TYPE_CMDR_BUY:
+                # This is really only split from the carrier one in case we want to do different things... but could always be merged
+                logger.info(f'Processing CMDR Buy Request, assuming in-transit for {sheetName}')
+                if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
+                    logger.warning('DISABLED by killswitch, ignoring')
+                    return
+                commodity = item.data['Type']
+                amount = int(item.data['Count'])
+                this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, inTransit=True)
+            case PushRequest.TYPE_CARRIER_INTRANSIT_RECALC:
+                logger.info('Processing Carrier In-Transit Recalculate request')
+                resetCargo = False
+                if item.data:
+                    resetCargo = bool(item.data.get('clear', False))
+                this.sheet.recalculate_in_transit(sheetName, item.cmdr, clear=resetCargo)
+            case _:
+                raise "Unknown PushRequest"
     except Exception:
         logger.error(traceback.format_exc())
 
@@ -890,7 +894,25 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
         if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
             logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
             this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_TRANSFER, entry))
-       
+    elif entry['event'] == 'CarrierDepositFuel':
+        """
+        {
+            "timestamp": "2025-03-25T08:06:16Z",
+            "event": "CarrierDepositFuel",
+            "CarrierID": 3707348992,
+            "Amount": 1,
+            "Total": 245
+        }
+        """
+        if station in this.sheet.carrierTabNames.keys():
+            logger.debug(f'Carrier "{station}" known, creating queue entry')
+            # Lets make a synthic entry, to mimick a MarketSell request
+            sellEntry = {
+                'Type': 'tritium',
+                'Count': int(entry['Amount'])
+            }
+            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, sellEntry))
+
 def cmdr_data(data, is_beta):
     if data.source_host == SERVER_LIVE:
         logger.debug(f'CAPI: {data}')
