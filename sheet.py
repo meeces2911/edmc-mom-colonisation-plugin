@@ -150,6 +150,31 @@ class Sheet:
         except:
             return {}
 
+    def fetch_data_bulk(self, ranges: list[str]) -> any:
+        """Fetch multiple bits of data from the spreadsheet"""
+        base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values:batchGet?'
+        for range in ranges:
+            base_url += f'ranges={range}&'
+        base_url += 'majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE'
+        logger.debug(f'Sending request to GET {base_url}')
+        try:
+            token_refresh_attempted = False
+            while True:
+                res = self.requests_session.get(base_url, timeout=10)
+                if res.status_code == requests.codes.ok:
+                    return res.json()
+                elif res.status_code == requests.codes.unauthorized:
+                    logger.error(f'{res}{res.json()}')
+                    if not token_refresh_attempted:
+                        token_refresh_attempted = True
+                        self.auth.refresh()
+                        continue
+                else:
+                    logger.error(f'{res}{res.json()}')
+                return {}
+        except:
+            return {}
+
     def insert_data(self, range: str, body: dict, returnValues: bool = False) -> any:
         """Add/update some data in the spreadsheet"""
         # POST https://sheets.googleapis.com/v4/spreadsheets/SPREADSHEET_ID/values/Sheet1!A1:E1:append?valueInputOption=VALUE_INPUT_OPTION
@@ -245,18 +270,18 @@ class Sheet:
         logger.debug('Fetching latest settings')
         
         sheet = f"'{self.configSheetName.get()}'"
-        data = self.fetch_data(f'{sheet}!A:C')
-        carriers = self.fetch_data(f'{sheet}!J:L')
-        markets = self.fetch_data(f'{sheet}!O:P')
-        features = self.fetch_data(f'{sheet}!S:V')
-        #logger.debug(data)
-        #logger.debug(carriers)
-        #logger.debug(markets)
-        logger.debug(features)
+        dataRange = f'{sheet}!A:C'
+        carrierRange = f'{sheet}!J:L'
+        marketRange = f'{sheet}!O:P'
+        featureRange = f'{sheet}!S:V'
+        
+        data = self.fetch_data_bulk((dataRange, carrierRange, marketRange, featureRange))
+
+        logger.debug(data)
         
         # TODO: Error handling
         # for now, just bail, and try again later
-        if not data or not carriers or not markets:
+        if not data or len(data) == 0:
             return
 
         self.killswitches = {}
@@ -273,60 +298,64 @@ class Sheet:
 
         # Lets not let temporary failures in these settings kill the entire plugin
         try:
+            rangeIdx = 0
+            for valueRange in data.get('valueRanges'):
+                match rangeIdx:
+                    case 0: # Data Range
+                        for row in valueRange.get('values'):
+                            #logger.debug(row)
 
-            for row in data.get('values'):
-                logger.debug(row)
+                            if len(row) == 0:
+                                # Blank line, skip
+                                section_killswitches = False
+                                section_lookups = False
+                                section_commodity_mapping = False
+                                continue
+                            elif row[0] == 'Killswitches':
+                                section_killswitches = True
+                                continue
+                            elif row[0] == 'Lookups':
+                                section_lookups = True
+                                continue
+                            elif row[0] == 'Commodity Mapping':
+                                section_commodity_mapping = True
+                                continue
 
-                if len(row) == 0:
-                    # Blank line, skip
-                    section_killswitches = False
-                    section_lookups = False
-                    section_commodity_mapping = False
-                    continue
-                elif row[0] == 'Killswitches':
-                    section_killswitches = True
-                    continue
-                elif row[0] == 'Lookups':
-                    section_lookups = True
-                    continue
-                elif row[0] == 'Commodity Mapping':
-                    section_commodity_mapping = True
-                    continue
+                            if section_killswitches:
+                                self.killswitches[row[0].lower()] = row[1].lower()
+                                continue
+                            elif section_lookups:
+                                self.lookupRanges[row[0]] = row[1]
+                                continue
+                            elif section_commodity_mapping:
+                                self.commodityNamesToNice[row[0]] = row[1]
+                                self.commodityNamesFromNice[row[1]] = row[0]    # TODO: How do we handle double ups here ? Do we care ?
+                    case 1: # Carrier Range
+                        for row in valueRange.get('values'):
+                            if row[0] == 'Carriers':
+                                continue
+                            self.carrierTabNames[row[1]] = row[2]
+                    case 2: # Market Range
+                        for row in valueRange.get('values'):
+                            self.marketUpdatesSetBy[row[0]] = {
+                                    'setByOwner': row[1] == 'TRUE'
+                                }
+                    case 3: # Feature Range
+                        colNames: dict[int, str] = {}
+                        for row in valueRange.get('values'):
+                            if row[0] == 'Sheet Functionality':
+                                for idx in range(1, len(row)):
+                                    logger.debug(f'Adding {row[idx]} to Column Names')
+                                    colNames[idx] = row[idx]
+                                continue
+                                
+                            settings: dict[str, bool] = {}
+                            for idx in colNames.keys():
+                                settings[colNames[idx]] = row[idx] == 'TRUE'
 
-                if section_killswitches:
-                    self.killswitches[row[0].lower()] = row[1].lower()
-                    continue
-                elif section_lookups:
-                    self.lookupRanges[row[0]] = row[1]
-                    continue
-                elif section_commodity_mapping:
-                    self.commodityNamesToNice[row[0]] = row[1]
-                    self.commodityNamesFromNice[row[1]] = row[0]    # TODO: How do we handle double ups here ? Do we care ?
+                            self.sheetFunctionality[row[0]] = settings
 
-            for row in carriers.get('values'):
-                if row[0] == 'Carriers':
-                    continue
-                self.carrierTabNames[row[1]] = row[2]
-
-            for row in markets.get('values'):
-                self.marketUpdatesSetBy[row[0]] = {
-                        'setByOwner': row[1] == 'TRUE'
-                    }
-                
-            colNames: dict[int, str] = {}
-            for row in features.get('values'):
-                if row[0] == 'Sheet Functionality':
-                    for idx in range(1, len(row)):
-                        logger.debug(f'Adding {row[idx]} to Column Names')
-                        colNames[idx] = row[idx]
-                    continue
-                    
-                settings: dict[str, bool] = {}
-                for idx in colNames.keys():
-                    settings[colNames[idx]] = row[idx] == 'TRUE'
-
-                self.sheetFunctionality[row[0]] = settings
-
+                rangeIdx += 1
         except Exception:
             logger.error(traceback.format_exc())
 
