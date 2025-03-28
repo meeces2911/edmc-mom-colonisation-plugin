@@ -49,7 +49,7 @@ class Sheet:
             
             self.check_and_authorise_access_to_spreadsheet()
 
-    def check_and_authorise_access_to_spreadsheet(self) -> any:
+    def check_and_authorise_access_to_spreadsheet(self, skipReauth=False) -> any:
         """Checks and (Re)Authorises access to the spreadsheet. Returns the current sheets"""
         logger.debug('Checking access to spreadsheet')
         res = self.requests_session.get(f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}?fields=sheets/properties(sheetId,title)')
@@ -57,36 +57,40 @@ class Sheet:
         logger.debug(f'{res}{sheet_list_json}')
 
         if res.status_code != requests.codes.ok:
-            # Need to authorise this specific file
-            logger.debug('404 - access not granted yet, showing picker')
-            self.handler = LocalHTTPServer()
-            self.handler.start()
-            
-            webbrowser.open(self.handler.gpickerEndpoint)
-            logger.info('Waiting for auth response')
-            while not self.handler.response:
-                # spin
-                time.sleep(1 / 10)
+            if not skipReauth:
+                # Need to authorise this specific file
+                logger.debug('404 - access not granted yet, showing picker')
+                self.handler = LocalHTTPServer()
+                self.handler.start()
                 
-                # TODO: how does python properly handle timeouts
+                webbrowser.open(self.handler.gpickerEndpoint)
+                logger.info('Waiting for auth response')
+                while not self.handler.response:
+                    # spin
+                    time.sleep(1 / 10)
+                    
+                    # TODO: how does python properly handle timeouts
+                    
+                    # EDMC shutdown, bail
+                    if config.shutting_down:
+                        logger.warning('Sheet Authorise - aborting, shutting down')
+                        self.handler.close()
+                        self.handler = None
+                        return None
                 
-                # EDMC shutdown, bail
-                if config.shutting_down:
-                    logger.warning('Sheet Authorise - aborting, shutting down')
-                    self.handler.close()
-                    self.handler = None
-                    return None
-            
-            self.handler.close()
-            logger.debug(f'response: {self.handler.response}')
-            
-            # For now, lets ignore the response entirely and use our known values instead
-            res = self.requests_session.get(f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}?fields=sheets/properties(sheetId,title)')
-            sheet_list_json = res.json()
-            if res.status_code != requests.codes.ok:
-                res.raise_for_status()
+                self.handler.close()
+                logger.debug(f'response: {self.handler.response}')
+                
+                # For now, lets ignore the response entirely and use our known values instead
+                res = self.requests_session.get(f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}?fields=sheets/properties(sheetId,title)')
+                sheet_list_json = res.json()
+                if res.status_code != requests.codes.ok:
+                    res.raise_for_status()
 
-            self.handler = None
+                self.handler = None
+            else:
+                logger.error("No longer authorised")
+                return
 
         # {'sheets': [{'properties': {'sheetId': 944449574, 'title': 'Carrier'}}, {'properties': {'sheetId': 824956629, 'title': 'CMDR - Marasesti'}}, {'properties': {'sheetId': 1007636203, 'title': 'FC Tritons Reach'}}, {'properties': {'sheetId': 344055582, 'title': 'CMDR - T2F-7KX'}}, {'properties': {'sheetId': 1890618844, 'title': "CMDR-Roxy's Roost"}}, {'properties': {'sheetId': 684229219, 'title': 'CMDR - Galactic Bridge'}}, {'properties': {'sheetId': 1525608748, 'title': 'CMDR - Nebulous Terraforming'}}, {'properties': {'sheetId': 48909025, 'title': 'CMDR - CLB Voqooe Lagoon'}}, {'properties': {'sheetId': 1395555039, 'title': 'Buy orders'}}, {'properties': {'sheetId': 1241558540, 'title': 'EDMC Plugin Testing'}}, {'properties': {'sheetId': 943290351, 'title': 'WIP - System Info'}}, {'properties': {'sheetId': 1304500094, 'title': 'WIP - SCS Offload'}}, {'properties': {'sheetId': 480283806, 'title': 'WIP - Marasesti'}}, {'properties': {'sheetId': 584248853, 'title': 'Detail3-Steel'}}, {'properties': {'sheetId': 206284589, 'title': 'Detail2-Polymers'}}, {'properties': {'sheetId': 948337654, 'title': 'Detail1-Medical Diagnostic Equipment'}}, {'properties': {'sheetId': 1936079810, 'title': 'WIP - Data'}}, {'properties': {'sheetId': 2062075030, 'title': 'Sheet3'}}, {'properties': {'sheetId': 1653004935, 'title': 'Colonization'}}, {'properties': {'sheetId': 135970834, 'title': 'Shoppinglist'}}]}
         # Lets mangle this a bit to be more useful
@@ -268,6 +272,14 @@ class Sheet:
         # Lets get everything on the settings sheet and wade through it
         # {{BASE_END_POINT}}/v4/spreadsheets/{{SPREADSHEET_ID}}/values/'EDMC Plugin Testing'!A:E
         logger.debug('Fetching latest settings')
+
+        # Make sure any new sheets/tabs get their ids added to the 'self.sheets' dict
+        self.check_and_authorise_access_to_spreadsheet(skipReauth=True)
+
+        if config.shutting_down:
+            # If shutdown is called before we have the sheet name, make sure we bail
+            # as making a call to config.get_str blocks
+            return
         
         sheet = f"'{self.configSheetName.get()}'"
         dataRange = f'{sheet}!A:C'
