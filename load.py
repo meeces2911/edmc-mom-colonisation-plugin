@@ -527,7 +527,6 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
         else:
             this.queue.put(PushRequest(cmdr, this.cmdrsAssignedCarrier, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
-
     elif entry['event'] == 'Location':
         logger.info(f'Location: In system {system}')
         if station is None:
@@ -549,7 +548,6 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
         if this.cargoCapacity != state['CargoCapacity']:
             this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_UPDATE, None))
         this.cargoCapacity = state['CargoCapacity']
-
     elif entry['event'] == 'Undocked':
          this.currentCargo = None
     elif entry['event'] == 'Cargo':
@@ -561,9 +559,10 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             }
             this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_SELL, data))
             this.currentCargo = state['Cargo']
+        
         # No more cago, lets make sure any in-transit stuff we might have been tracking is cleared
         if int(entry.get('Count', 0)) == 0:
-            this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))
+            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))
     elif entry['event'] == 'Market':
         # Actual market data is in the market.json file
         if station in this.sheet.carrierTabNames.keys():
