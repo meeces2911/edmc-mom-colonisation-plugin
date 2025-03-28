@@ -497,420 +497,420 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
 
         this.capiMutex.release()
         
-
-    if entry['event'] == 'StartUp':
-        """
-        {
-            'timestamp': '2025-03-01T23:22:53Z',
-            'event': 'StartUp',
-            'StarSystem': 'Zlotrimi',
-            'StarPos': [-16.0, -23.21875, 139.5625],
-            'SystemAddress': 3618249902459,
-            'Population': 930301705,
-            'Docked': True,
-            'MarketID': 3231007232,
-            'StationName': 'Hieb Terminal',
-            'StationType': 'Orbis'
-        }
-        """
-        logger.info(f'StartUp: In system {system}')
-        if station is None:
-            logger.info('StartUp: Flying in normal space')
-        else:
-            logger.info(f'StartUp: Docked at {station}')
-        this.currentCargo = state['Cargo']
-        this.cargoCapacity = state['CargoCapacity']
-        this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_UPDATE, None))
-
-        if entry.get('StationType') == 'FleetCarrier':
-            this.carrierCallsign = station
-            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
-        else:
-            this.queue.put(PushRequest(cmdr, this.cmdrsAssignedCarrier, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
-    elif entry['event'] == 'Location':
-        logger.info(f'Location: In system {system}')
-        if station is None:
-            logger.info('Location: Flying in normal space')
-        else:
-            logger.info(f'Location: Docked at {station}')
-    elif entry['event'] == 'FSDJump':
-        logger.info(f'FSDJump: Arrived In system {system}')
-    elif entry['event'] == 'Docked':
-        # Keep track of current cargo
-        this.currentCargo = state['Cargo']
-        
-         # Update the carrier location
-        if station in this.sheet.carrierTabNames.keys():
-            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_LOC_UPDATE, system))
-            this.carrierCallsign = station
-
-        # Update cargo capacity if its changed (There might be a better event for this)
-        if this.cargoCapacity != state['CargoCapacity']:
-            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_UPDATE, None))
-        this.cargoCapacity = state['CargoCapacity']
-    elif entry['event'] == 'Undocked':
-         this.currentCargo = None
-    elif entry['event'] == 'Cargo':
-        # SCS don't do MarketSell, but there are Cargo events, so lets just track what we started with and do a diff
-        if station == 'System Colonisation Ship' or station == '$EXT_PANEL_ColonisationShip:#index=1;':
-            data = {
-                'oldCargo': this.currentCargo,
-                'newCargo': state['Cargo']
+    match entry['event']:
+        case 'StartUp':
+            """
+            {
+                'timestamp': '2025-03-01T23:22:53Z',
+                'event': 'StartUp',
+                'StarSystem': 'Zlotrimi',
+                'StarPos': [-16.0, -23.21875, 139.5625],
+                'SystemAddress': 3618249902459,
+                'Population': 930301705,
+                'Docked': True,
+                'MarketID': 3231007232,
+                'StationName': 'Hieb Terminal',
+                'StationType': 'Orbis'
             }
-            this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_SELL, data))
+            """
+            logger.info(f'StartUp: In system {system}')
+            if station is None:
+                logger.info('StartUp: Flying in normal space')
+            else:
+                logger.info(f'StartUp: Docked at {station}')
             this.currentCargo = state['Cargo']
-        
-        # No more cago, lets make sure any in-transit stuff we might have been tracking is cleared
-        if int(entry.get('Count', 0)) == 0:
-            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))
-    elif entry['event'] == 'Market':
-        # Actual market data is in the market.json file
-        if station in this.sheet.carrierTabNames.keys():
-            logger.debug(f'Station ({station}) known, checking market data')
-            journaldir = config.get_str('journaldir')
-            if journaldir is None or journaldir == '':
-                journaldir = config.default_journal_dir
+            this.cargoCapacity = state['CargoCapacity']
+            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_UPDATE, None))
 
-            path = Path(journaldir) / f'{entry["event"]}.json'
-            logger.debug(path)
-            try:
-                with path.open('rb') as dataFile:
-                    marketData = json.load(dataFile)
-                    this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_MARKET_UPDATE, marketData))
-            except Exception:
-                logger.error(traceback.format_exc())
-    elif entry['event'] == 'MarketSell':
-        """
-        {
-            'timestamp': '2025-03-01T23:18:21Z',
-            'event': 'MarketSell',
-            'MarketID': 3231007232,
-            'Type': 'liquidoxygen',
-            'Type_Localised': 'Liquid oxygen',
-            'Count': 1,
-            'SellPrice': 572,
-            'TotalSale': 572,
-            'AvgPricePaid': 650
-        }
-        """
-        logger.debug(f'MarketSell: CMDR {cmdr} sold {entry["Count"]} {entry["Type"]} to {station}')
-        if station in this.sheet.carrierTabNames.keys():
-            logger.debug('Station known, creating queue entry')
-            # Something for us to do, lets queue it
-            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, entry))
-        else:
-            logger.debug(f'Station ({station}) unknown, assuming transfer to carrier')
-            # This will get messy
-            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, entry))
-    elif entry['event'] == 'MarketBuy':
-        """
-        {
-            "timestamp": "2025-03-08T07:09:11Z",
-            "event": "MarketBuy",
-            "MarketID": 3231007232,
-            "Type": "superconductors",
-            "Count": 124,
-            "BuyPrice": 5862,
-            "TotalCost": 726888
-        }
-        """
-        logger.debug(f'MarketBuy: CMDR {cmdr} bought {entry["Count"]} {entry["Type"]} from {station}')
-        if station in this.sheet.carrierTabNames.keys():
-            logger.debug('Station known, creating queue entry')
-            # Something for us to do, lets queue it
-            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_CMDR_BUY, entry))
-        else:
-            logger.debug(f'Station ({station}) unknown, assuming transfer to carrier')
-            # This will get messy
-            this.queue.put(PushRequest(cmdr, this.cmdrsAssignedCarrier, PushRequest.TYPE_CMDR_BUY, entry))
-    elif entry['event'] == 'CarrierTradeOrder':
-        """
-        // BUY Order
-        {
-            "timestamp": "2025-03-08T05:39:13Z",
-            "event": "CarrierTradeOrder",
-            "CarrierID": 3707348992,
-            "BlackMarket": false,
-            "Commodity": "copper",
-            "PurchaseOrder": 252,
-            "Price": 1267
-        }
-        // SELL Order
-        {
-            "timestamp": "2025-03-08T23:57:41Z",
-            "event": "CarrierTradeOrder",
-            "CarrierID": 3707348992,
-            "BlackMarket": false,
-            "Commodity": "steel",
-            "SaleOrder": 70,
-            "Price": 4186
-        }
-        // CANCEL Order
-        {
-            "timestamp": "2025-03-09T00:06:29Z",
-            "event": "CarrierTradeOrder",
-            "CarrierID": 3707348992,
-            "BlackMarket": false,
-            "Commodity": "insulatingmembrane",
-            "Commodity_Localised": "Insulating Membrane",
-            "CancelTrade": true
-        }
-        """
-        if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
-            logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
-            this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE, entry))
-        else:
-            logger.debug(f'Carrier "{this.carrierCallsign}" not known, skipping market update')
-    elif entry['event'] == 'CarrierJumpRequest' or entry['event'] == 'CarrierJumpCancelled':
-        """
-        {
-            "timestamp": "2025-03-09T02:44:36Z",
-            "event": "CarrierJumpRequest",
-            "CarrierID": 3707348992,
-            "SystemName": "LTT 8001",
-            "Body": "LTT 8001 A 2",
-            "SystemAddress": 3107442365154,
-            "BodyID": 6,
-            "DepartureTime": "2025-03-09T03:36:10Z"
-        }
-        """
-        if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
-            logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
-            this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
-    elif entry['event'] == 'CarrierJump':
-        """
-        {
-            "timestamp": "2025-03-14T07:11:01Z",
-            "event": "CarrierJump",
-            "Docked": false,
-            "OnFoot": true,
-            "StarSystem": "Katuri",
-            "SystemAddress": 3309012257139,
-            "StarPos": [-19.68750, -6.06250, 81.56250],
-            "SystemAllegiance": "Federation",
-            "SystemEconomy": "$economy_Agri;",
-            "SystemEconomy_Localised": "Agriculture",
-            "SystemSecondEconomy": "$economy_Refinery;",
-            "SystemSecondEconomy_Localised": "Refinery",
-            "SystemGovernment": "$government_Democracy;",
-            "SystemGovernment_Localised": "Democracy",
-            "SystemSecurity": "$SYSTEM_SECURITY_high;",
-            "SystemSecurity_Localised": "High Security",
-            "Population": 2841893384,
-            "Body": "Katuri A 1",
-            "BodyID": 7,
-            "BodyType": "Planet",
-            "ControllingPower": "Yuri Grom",
-            "Powers": ["Edmund Mahon", "Yuri Grom"],
-            "PowerplayState": "Stronghold",
-            "Factions": [{
-                    "Name": "Independents of Katuri",
-                    "FactionState": "None",
-                    "Government": "Democracy",
-                    "Influence": 0.009911,
-                    "Allegiance": "Independent",
-                    "Happiness": "$Faction_HappinessBand2;",
-                    "Happiness_Localised": "Happy",
-                    "MyReputation": 0.000000
-                }, {
-                    "Name": "Katuri Jet Advanced Inc",
-                    "FactionState": "None",
-                    "Government": "Corporate",
-                    "Influence": 0.014866,
-                    "Allegiance": "Federation",
-                    "Happiness": "$Faction_HappinessBand2;",
-                    "Happiness_Localised": "Happy",
-                    "MyReputation": 0.000000
-                }, {
-                    "Name": "Defence Force of Katuri",
-                    "FactionState": "None",
-                    "Government": "Dictatorship",
-                    "Influence": 0.016848,
-                    "Allegiance": "Independent",
-                    "Happiness": "$Faction_HappinessBand2;",
-                    "Happiness_Localised": "Happy",
-                    "MyReputation": 0.000000
-                }, {
-                    "Name": "Katuri Legal Company",
-                    "FactionState": "None",
-                    "Government": "Corporate",
-                    "Influence": 0.025768,
-                    "Allegiance": "Federation",
-                    "Happiness": "$Faction_HappinessBand2;",
-                    "Happiness_Localised": "Happy",
-                    "MyReputation": 0.000000
-                }, {
-                    "Name": "Katuri Jet Boys",
-                    "FactionState": "None",
-                    "Government": "Anarchy",
-                    "Influence": 0.018831,
-                    "Allegiance": "Independent",
-                    "Happiness": "$Faction_HappinessBand2;",
-                    "Happiness_Localised": "Happy",
-                    "MyReputation": 0.000000
-                }, {
-                    "Name": "Section 31",
-                    "FactionState": "None",
-                    "Government": "Corporate",
-                    "Influence": 0.009911,
-                    "Allegiance": "Federation",
-                    "Happiness": "$Faction_HappinessBand2;",
-                    "Happiness_Localised": "Happy",
-                    "MyReputation": 0.000000
-                }, {
-                    "Name": "Intergalactic Nova Republic",
-                    "FactionState": "None",
-                    "Government": "Democracy",
-                    "Influence": 0.903865,
-                    "Allegiance": "Federation",
-                    "Happiness": "$Faction_HappinessBand2;",
-                    "Happiness_Localised": "Happy",
-                    "MyReputation": 0.000000,
-                    "PendingStates": [{
-                            "State": "Expansion",
-                            "Trend": 0
-                        }
-                    ]
+            if entry.get('StationType') == 'FleetCarrier':
+                this.carrierCallsign = station
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
+            else:
+                this.queue.put(PushRequest(cmdr, this.cmdrsAssignedCarrier, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
+        case 'Location':
+            logger.info(f'Location: In system {system}')
+            if station is None:
+                logger.info('Location: Flying in normal space')
+            else:
+                logger.info(f'Location: Docked at {station}')
+        case 'FSDJump':
+            logger.info(f'FSDJump: Arrived In system {system}')
+        case 'Docked':
+            # Keep track of current cargo
+            this.currentCargo = state['Cargo']
+            
+            # Update the carrier location
+            if station in this.sheet.carrierTabNames.keys():
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_LOC_UPDATE, system))
+                this.carrierCallsign = station
+
+            # Update cargo capacity if its changed (There might be a better event for this)
+            if this.cargoCapacity != state['CargoCapacity']:
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_UPDATE, None))
+            this.cargoCapacity = state['CargoCapacity']
+        case 'Undocked':
+            this.currentCargo = None
+        case 'Cargo':
+            # SCS don't do MarketSell, but there are Cargo events, so lets just track what we started with and do a diff
+            if station == 'System Colonisation Ship' or station == '$EXT_PANEL_ColonisationShip:#index=1;':
+                data = {
+                    'oldCargo': this.currentCargo,
+                    'newCargo': state['Cargo']
                 }
-            ],
-            "SystemFaction": {
-                "Name": "Intergalactic Nova Republic"
+                this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_SELL, data))
+                this.currentCargo = state['Cargo']
+            
+            # No more cago, lets make sure any in-transit stuff we might have been tracking is cleared
+            if int(entry.get('Count', 0)) == 0:
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))
+        case 'Market':
+            # Actual market data is in the market.json file
+            if station in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Station ({station}) known, checking market data')
+                journaldir = config.get_str('journaldir')
+                if journaldir is None or journaldir == '':
+                    journaldir = config.default_journal_dir
+
+                path = Path(journaldir) / f'{entry["event"]}.json'
+                logger.debug(path)
+                try:
+                    with path.open('rb') as dataFile:
+                        marketData = json.load(dataFile)
+                        this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_MARKET_UPDATE, marketData))
+                except Exception:
+                    logger.error(traceback.format_exc())
+        case 'MarketSell':
+            """
+            {
+                'timestamp': '2025-03-01T23:18:21Z',
+                'event': 'MarketSell',
+                'MarketID': 3231007232,
+                'Type': 'liquidoxygen',
+                'Type_Localised': 'Liquid oxygen',
+                'Count': 1,
+                'SellPrice': 572,
+                'TotalSale': 572,
+                'AvgPricePaid': 650
             }
-        }
-        """
-        if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
-            logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
-            this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
-    elif entry['event'] == 'CarrierStats':
-        """
-        {
-            'timestamp': '2025-03-09T05:07:21Z',
-            'event': 'CarrierStats',
-            'CarrierID': 3707348992,
-            'Callsign': 'X7H-9KW',
-            'Name': 'THE LAST RESORT',
-            'DockingAccess': 'all',
-            'AllowNotorious': True,
-            'FuelLevel': 456,
-            'JumpRangeCurr': 500.0,
-            'JumpRangeMax': 500.0,
-            'PendingDecommission': False,
-            'SpaceUsage': {
-                'TotalCapacity': 25000,
-                'Crew': 680,
-                'Cargo': 715,
-                'CargoSpaceReserved': 21941,
-                'ShipPacks': 0,
-                'ModulePacks': 0,
-                'FreeSpace': 1664
-            },
-            'Finance': {
-                'CarrierBalance': 1997048445,
-                'ReserveBalance': 0,
-                'AvailableBalance': 1824985690,
-                'ReservePercent': 0,
-                'TaxRate_refuel': 8,
-                'TaxRate_repair': 10
-            },
-            'Crew': [{
-                    'CrewRole': 'BlackMarket',
-                    'Activated': False
-                }, {
-                    'CrewRole': 'Captain',
-                    'Activated': True,
-                    'Enabled': True,
-                    'CrewName': 'Loren Mcdowell'
-                }, {
-                    'CrewRole': 'Refuel',
-                    'Activated': True,
-                    'Enabled': True,
-                    'CrewName': 'Marlin Cain'
-                }, {
-                    'CrewRole': 'Repair',
-                    'Activated': True,
-                    'Enabled': True,
-                    'CrewName': 'Jemma Short'
-                }, {
-                    'CrewRole': 'Rearm',
-                    'Activated': False
-                }, {
-                    'CrewRole': 'Commodities',
-                    'Activated': True,
-                    'Enabled': True,
-                    'CrewName': 'Jennifer Cardenas'
-                }, {
-                    'CrewRole': 'VoucherRedemption',
-                    'Activated': False
-                }, {
-                    'CrewRole': 'Exploration',
-                    'Activated': False
-                }, {
-                    'CrewRole': 'Shipyard',
-                    'Activated': False
-                }, {
-                    'CrewRole': 'Outfitting',
-                    'Activated': False
-                }, {
-                    'CrewRole': 'CarrierFuel',
-                    'Activated': True,
-                    'Enabled': True,
-                    'CrewName': 'Jorge Dale'
-                }, {
-                    'CrewRole': 'VistaGenomics',
-                    'Activated': False
-                }, {
-                    'CrewRole': 'PioneerSupplies',
-                    'Activated': False
-                }, {
-                    'CrewRole': 'Bartender',
-                    'Activated': False
-                }
-            ],
-            'ShipPacks': [],
-            'ModulePacks': []
-        }
-        """
-        # Keep track of the call sign for easy lookups later
-        this.carrierCallsign = entry['Callsign']
-        logger.debug(f'Carrier ID updated to {this.carrierCallsign}')
-    elif entry['event'] == 'CargoTransfer':
-        """
-        {
-            "timestamp": "2025-03-14T10:26:51Z",
-            "event": "CargoTransfer",
-            "Transfers": [{
-                    "Type": "steel",
-                    "Count": 76,
-                    "Direction": "tocarrier"
-                }, {
-                    "Type": "steel",
-                    "Count": 644,
-                    "Direction": "tocarrier"
-                }
-            ]
-        }
-        """
-        if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
-            logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
-            this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_TRANSFER, entry))
-    elif entry['event'] == 'CarrierDepositFuel':
-        """
-        {
-            "timestamp": "2025-03-25T08:06:16Z",
-            "event": "CarrierDepositFuel",
-            "CarrierID": 3707348992,
-            "Amount": 1,
-            "Total": 245
-        }
-        """
-        if station in this.sheet.carrierTabNames.keys():
-            logger.debug(f'Carrier "{station}" known, creating queue entry')
-            # Lets make a synthic entry, to mimick a MarketSell request
-            sellEntry = {
-                'Type': 'tritium',
-                'Count': int(entry['Amount'])
+            """
+            logger.debug(f'MarketSell: CMDR {cmdr} sold {entry["Count"]} {entry["Type"]} to {station}')
+            if station in this.sheet.carrierTabNames.keys():
+                logger.debug('Station known, creating queue entry')
+                # Something for us to do, lets queue it
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, entry))
+            else:
+                logger.debug(f'Station ({station}) unknown, assuming transfer to carrier')
+                # This will get messy
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, entry))
+        case 'MarketBuy':
+            """
+            {
+                "timestamp": "2025-03-08T07:09:11Z",
+                "event": "MarketBuy",
+                "MarketID": 3231007232,
+                "Type": "superconductors",
+                "Count": 124,
+                "BuyPrice": 5862,
+                "TotalCost": 726888
             }
-            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, sellEntry))
+            """
+            logger.debug(f'MarketBuy: CMDR {cmdr} bought {entry["Count"]} {entry["Type"]} from {station}')
+            if station in this.sheet.carrierTabNames.keys():
+                logger.debug('Station known, creating queue entry')
+                # Something for us to do, lets queue it
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_CMDR_BUY, entry))
+            else:
+                logger.debug(f'Station ({station}) unknown, assuming transfer to carrier')
+                # This will get messy
+                this.queue.put(PushRequest(cmdr, this.cmdrsAssignedCarrier, PushRequest.TYPE_CMDR_BUY, entry))
+        case 'CarrierTradeOrder':
+            """
+            // BUY Order
+            {
+                "timestamp": "2025-03-08T05:39:13Z",
+                "event": "CarrierTradeOrder",
+                "CarrierID": 3707348992,
+                "BlackMarket": false,
+                "Commodity": "copper",
+                "PurchaseOrder": 252,
+                "Price": 1267
+            }
+            // SELL Order
+            {
+                "timestamp": "2025-03-08T23:57:41Z",
+                "event": "CarrierTradeOrder",
+                "CarrierID": 3707348992,
+                "BlackMarket": false,
+                "Commodity": "steel",
+                "SaleOrder": 70,
+                "Price": 4186
+            }
+            // CANCEL Order
+            {
+                "timestamp": "2025-03-09T00:06:29Z",
+                "event": "CarrierTradeOrder",
+                "CarrierID": 3707348992,
+                "BlackMarket": false,
+                "Commodity": "insulatingmembrane",
+                "Commodity_Localised": "Insulating Membrane",
+                "CancelTrade": true
+            }
+            """
+            if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE, entry))
+            else:
+                logger.debug(f'Carrier "{this.carrierCallsign}" not known, skipping market update')
+        case 'CarrierJumpRequest' | 'CarrierJumpCancelled':
+            """
+            {
+                "timestamp": "2025-03-09T02:44:36Z",
+                "event": "CarrierJumpRequest",
+                "CarrierID": 3707348992,
+                "SystemName": "LTT 8001",
+                "Body": "LTT 8001 A 2",
+                "SystemAddress": 3107442365154,
+                "BodyID": 6,
+                "DepartureTime": "2025-03-09T03:36:10Z"
+            }
+            """
+            if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
+        case 'CarrierJump':
+            """
+            {
+                "timestamp": "2025-03-14T07:11:01Z",
+                "event": "CarrierJump",
+                "Docked": false,
+                "OnFoot": true,
+                "StarSystem": "Katuri",
+                "SystemAddress": 3309012257139,
+                "StarPos": [-19.68750, -6.06250, 81.56250],
+                "SystemAllegiance": "Federation",
+                "SystemEconomy": "$economy_Agri;",
+                "SystemEconomy_Localised": "Agriculture",
+                "SystemSecondEconomy": "$economy_Refinery;",
+                "SystemSecondEconomy_Localised": "Refinery",
+                "SystemGovernment": "$government_Democracy;",
+                "SystemGovernment_Localised": "Democracy",
+                "SystemSecurity": "$SYSTEM_SECURITY_high;",
+                "SystemSecurity_Localised": "High Security",
+                "Population": 2841893384,
+                "Body": "Katuri A 1",
+                "BodyID": 7,
+                "BodyType": "Planet",
+                "ControllingPower": "Yuri Grom",
+                "Powers": ["Edmund Mahon", "Yuri Grom"],
+                "PowerplayState": "Stronghold",
+                "Factions": [{
+                        "Name": "Independents of Katuri",
+                        "FactionState": "None",
+                        "Government": "Democracy",
+                        "Influence": 0.009911,
+                        "Allegiance": "Independent",
+                        "Happiness": "$Faction_HappinessBand2;",
+                        "Happiness_Localised": "Happy",
+                        "MyReputation": 0.000000
+                    }, {
+                        "Name": "Katuri Jet Advanced Inc",
+                        "FactionState": "None",
+                        "Government": "Corporate",
+                        "Influence": 0.014866,
+                        "Allegiance": "Federation",
+                        "Happiness": "$Faction_HappinessBand2;",
+                        "Happiness_Localised": "Happy",
+                        "MyReputation": 0.000000
+                    }, {
+                        "Name": "Defence Force of Katuri",
+                        "FactionState": "None",
+                        "Government": "Dictatorship",
+                        "Influence": 0.016848,
+                        "Allegiance": "Independent",
+                        "Happiness": "$Faction_HappinessBand2;",
+                        "Happiness_Localised": "Happy",
+                        "MyReputation": 0.000000
+                    }, {
+                        "Name": "Katuri Legal Company",
+                        "FactionState": "None",
+                        "Government": "Corporate",
+                        "Influence": 0.025768,
+                        "Allegiance": "Federation",
+                        "Happiness": "$Faction_HappinessBand2;",
+                        "Happiness_Localised": "Happy",
+                        "MyReputation": 0.000000
+                    }, {
+                        "Name": "Katuri Jet Boys",
+                        "FactionState": "None",
+                        "Government": "Anarchy",
+                        "Influence": 0.018831,
+                        "Allegiance": "Independent",
+                        "Happiness": "$Faction_HappinessBand2;",
+                        "Happiness_Localised": "Happy",
+                        "MyReputation": 0.000000
+                    }, {
+                        "Name": "Section 31",
+                        "FactionState": "None",
+                        "Government": "Corporate",
+                        "Influence": 0.009911,
+                        "Allegiance": "Federation",
+                        "Happiness": "$Faction_HappinessBand2;",
+                        "Happiness_Localised": "Happy",
+                        "MyReputation": 0.000000
+                    }, {
+                        "Name": "Intergalactic Nova Republic",
+                        "FactionState": "None",
+                        "Government": "Democracy",
+                        "Influence": 0.903865,
+                        "Allegiance": "Federation",
+                        "Happiness": "$Faction_HappinessBand2;",
+                        "Happiness_Localised": "Happy",
+                        "MyReputation": 0.000000,
+                        "PendingStates": [{
+                                "State": "Expansion",
+                                "Trend": 0
+                            }
+                        ]
+                    }
+                ],
+                "SystemFaction": {
+                    "Name": "Intergalactic Nova Republic"
+                }
+            }
+            """
+            if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
+        case 'CarrierStats':
+            """
+            {
+                'timestamp': '2025-03-09T05:07:21Z',
+                'event': 'CarrierStats',
+                'CarrierID': 3707348992,
+                'Callsign': 'X7H-9KW',
+                'Name': 'THE LAST RESORT',
+                'DockingAccess': 'all',
+                'AllowNotorious': True,
+                'FuelLevel': 456,
+                'JumpRangeCurr': 500.0,
+                'JumpRangeMax': 500.0,
+                'PendingDecommission': False,
+                'SpaceUsage': {
+                    'TotalCapacity': 25000,
+                    'Crew': 680,
+                    'Cargo': 715,
+                    'CargoSpaceReserved': 21941,
+                    'ShipPacks': 0,
+                    'ModulePacks': 0,
+                    'FreeSpace': 1664
+                },
+                'Finance': {
+                    'CarrierBalance': 1997048445,
+                    'ReserveBalance': 0,
+                    'AvailableBalance': 1824985690,
+                    'ReservePercent': 0,
+                    'TaxRate_refuel': 8,
+                    'TaxRate_repair': 10
+                },
+                'Crew': [{
+                        'CrewRole': 'BlackMarket',
+                        'Activated': False
+                    }, {
+                        'CrewRole': 'Captain',
+                        'Activated': True,
+                        'Enabled': True,
+                        'CrewName': 'Loren Mcdowell'
+                    }, {
+                        'CrewRole': 'Refuel',
+                        'Activated': True,
+                        'Enabled': True,
+                        'CrewName': 'Marlin Cain'
+                    }, {
+                        'CrewRole': 'Repair',
+                        'Activated': True,
+                        'Enabled': True,
+                        'CrewName': 'Jemma Short'
+                    }, {
+                        'CrewRole': 'Rearm',
+                        'Activated': False
+                    }, {
+                        'CrewRole': 'Commodities',
+                        'Activated': True,
+                        'Enabled': True,
+                        'CrewName': 'Jennifer Cardenas'
+                    }, {
+                        'CrewRole': 'VoucherRedemption',
+                        'Activated': False
+                    }, {
+                        'CrewRole': 'Exploration',
+                        'Activated': False
+                    }, {
+                        'CrewRole': 'Shipyard',
+                        'Activated': False
+                    }, {
+                        'CrewRole': 'Outfitting',
+                        'Activated': False
+                    }, {
+                        'CrewRole': 'CarrierFuel',
+                        'Activated': True,
+                        'Enabled': True,
+                        'CrewName': 'Jorge Dale'
+                    }, {
+                        'CrewRole': 'VistaGenomics',
+                        'Activated': False
+                    }, {
+                        'CrewRole': 'PioneerSupplies',
+                        'Activated': False
+                    }, {
+                        'CrewRole': 'Bartender',
+                        'Activated': False
+                    }
+                ],
+                'ShipPacks': [],
+                'ModulePacks': []
+            }
+            """
+            # Keep track of the call sign for easy lookups later
+            this.carrierCallsign = entry['Callsign']
+            logger.debug(f'Carrier ID updated to {this.carrierCallsign}')
+        case 'CargoTransfer':
+            """
+            {
+                "timestamp": "2025-03-14T10:26:51Z",
+                "event": "CargoTransfer",
+                "Transfers": [{
+                        "Type": "steel",
+                        "Count": 76,
+                        "Direction": "tocarrier"
+                    }, {
+                        "Type": "steel",
+                        "Count": 644,
+                        "Direction": "tocarrier"
+                    }
+                ]
+            }
+            """
+            if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_TRANSFER, entry))
+        case 'CarrierDepositFuel':
+            """
+            {
+                "timestamp": "2025-03-25T08:06:16Z",
+                "event": "CarrierDepositFuel",
+                "CarrierID": 3707348992,
+                "Amount": 1,
+                "Total": 245
+            }
+            """
+            if station in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{station}" known, creating queue entry')
+                # Lets make a synthic entry, to mimick a MarketSell request
+                sellEntry = {
+                    'Type': 'tritium',
+                    'Count': int(entry['Amount'])
+                }
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, sellEntry))
 
 def cmdr_data(data, is_beta):
     if data.source_host == SERVER_LIVE:
