@@ -450,6 +450,10 @@ class Sheet:
 
     def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int, inTransit: bool = False) -> None:
         """Updates the carrier sheet with some cargo"""
+        if len(sheet) == 0:
+            logger.error('No sheet name provided')
+            return
+        
         logger.debug(f'Building Carrier Sheet Message (inTransit:{inTransit} commodity:{commodity} amount:{amount})')
         range = f"'{sheet}'!A:A"
         bodyValue = [

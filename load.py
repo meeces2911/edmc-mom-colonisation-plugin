@@ -557,6 +557,9 @@ def process_item(item: PushRequest) -> None:
                 if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
                     logger.warning('DISABLED by killswitch, ignoring')
                     return
+                if len(sheetName) == 0:
+                    logger.error('Sheetname not provided, skipping')
+                    return
                 commodity = item.data['Type']
                 amount = int(item.data['Count'])
                 this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, inTransit=True)
