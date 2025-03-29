@@ -61,12 +61,12 @@ class This:
         self.requests_session.headers['User-Agent'] = user_agent
 
         self.sheet: Sheet | None = None
-        self.configSheetName: tk.StringVar
+        self.configSheetName: tk.StringVar = tk.StringVar(value=config.get_str('mom_config_sheet_name', default='EDMC Plugin Settings'))
 
         self.currentCargo: dict | None = None
         self.carrierCallsign: str | None = None
         self.cargoCapacity: int = 0
-        self.cmdrsAssignedCarrier: str | None = 'X7H-9KW'
+        self.cmdrsAssignedCarrier: tk.StringVar = tk.StringVar(value=config.get_str('mom_assigned_carrier'))
 
         self.clearAuthButton: tk.Button | None = None
         self.settingsClosed: bool = False
@@ -114,7 +114,7 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
     SEPY = 10
 
     this.settingsClosed = False
-    this.configSheetName = tk.StringVar(value=config.get_str('configSheetName', default='EDMC Plugin Settings'))
+    this.cmdrsAssignedCarrier.set(config.get_str('mom_assigned_carrier'))   # Refetch this from the config db, in case its changed since start up
 
     frame = nb.Frame(parent)
     frame.columnconfigure(1, weight=1)
@@ -154,7 +154,7 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
     with row as cur_row:
         nb.Label(frame, text='Currently Assigned Carrier').grid(row=cur_row, column=0, padx=PADX, pady=PADY, sticky=tk.W)
         nb.OptionMenu(
-            frame, this.configSheetName, this.configSheetName.get(), *sheetNames
+            frame, this.cmdrsAssignedCarrier, this.cmdrsAssignedCarrier.get(), *this.sheet.carrierTabNames.values()
         ).grid(row=cur_row, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
 
     return frame
@@ -168,6 +168,11 @@ def prefs_changed(cmdr: str | None, is_beta: bool) -> None:
     """
     Reload settings for new CMDR
     """
+
+    # Save settings to DB
+    config.set('mom_config_sheet_name', this.configSheetName.get())
+    config.set('mom_assigned_carrier', this.cmdrsAssignedCarrier.get())
+
     this.settingsClosed = True
 
     initial_startup()
@@ -342,7 +347,7 @@ def process_item(item: PushRequest) -> None:
                 amount = int(item.data['Count'])
 
                 if not sheetName:
-                    sheetName = this.sheet.carrierTabNames.get(this.cmdrsAssignedCarrier)
+                    sheetName = this.sheet.carrierTabNames.get(this.cmdrsAssignedCarrier.get())
                     logger.info(f'Carrier not known, assuming in-transit for {sheetName}')
                     inTransit = True
                     amount = amount * -1    # Selling, so carrier should 'loose' this amount (even, if it never really gained it)
@@ -526,7 +531,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 this.carrierCallsign = station
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
             else:
-                this.queue.put(PushRequest(cmdr, this.cmdrsAssignedCarrier, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
+                this.queue.put(PushRequest(cmdr, this.cmdrsAssignedCarrier.get(), PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
         case 'Location':
             logger.info(f'Location: In system {system}')
             if station is None:
@@ -622,7 +627,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             else:
                 logger.debug(f'Station ({station}) unknown, assuming transfer to carrier')
                 # This will get messy
-                this.queue.put(PushRequest(cmdr, this.cmdrsAssignedCarrier, PushRequest.TYPE_CMDR_BUY, entry))
+                this.queue.put(PushRequest(cmdr, this.cmdrsAssignedCarrier.get(), PushRequest.TYPE_CMDR_BUY, entry))
         case 'CarrierTradeOrder':
             """
             // BUY Order
