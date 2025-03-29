@@ -605,19 +605,13 @@ def process_carrier_transfer(sheetName: str, cmdr: str, data:dict) -> None:
             amount = amount * -1
             this.sheet.add_to_carrier_sheet(sheetName, cmdr, commodity, amount)
 
-def journal_entry(cmdr, is_beta, system, station, entry, state):
-    if not this.sheet:
-        logger.error('Journal entry before finished authenticating to Google, ignored')
-        return
-
-    
+def journal_entry(cmdr, is_beta, system, station, entry, state):    
     location = station
     if not location and entry.get('CarrierID'): # Event must be carrier based
         location = this.carrierCallsign
     logger.debug(entry['event'] + ' at ' + (location or '<unknown>'))
     logger.debug(f'Entry: {entry}')
     logger.debug(f'State: {state}')
-    
 
     if this.carrierAPIEnabled.get():
         this.capiMutex.acquire()
@@ -664,6 +658,9 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             if entry.get('StationType') == 'FleetCarrier':
                 this.carrierCallsign = station
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
+                if len(state.get('Cargo', {})) == 0:
+                    # If we've found any, remove them from the spreadsheet
+                    this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))
             else:
                 this.queue.put(PushRequest(cmdr, this.cmdrsAssignedCarrier.get(), PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
         case 'Location':
@@ -679,7 +676,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             this.currentCargo = state['Cargo']
             
             # Update the carrier location
-            if station in this.sheet.carrierTabNames.keys():
+            if this.sheet and station in this.sheet.carrierTabNames.keys():
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_LOC_UPDATE, system))
                 this.carrierCallsign = station
 
@@ -704,7 +701,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))
         case 'Market':
             # Actual market data is in the market.json file
-            if station in this.sheet.carrierTabNames.keys():
+            if this.sheet and station in this.sheet.carrierTabNames.keys():
                 logger.debug(f'Station ({station}) known, checking market data')
                 journaldir = config.get_str('journaldir')
                 if journaldir is None or journaldir == '':
@@ -733,7 +730,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             }
             """
             logger.debug(f'MarketSell: CMDR {cmdr} sold {entry["Count"]} {entry["Type"]} to {station}')
-            if station in this.sheet.carrierTabNames.keys():
+            if this.sheet and station in this.sheet.carrierTabNames.keys():
                 logger.debug('Station known, creating queue entry')
                 # Something for us to do, lets queue it
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, entry))
@@ -754,7 +751,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             }
             """
             logger.debug(f'MarketBuy: CMDR {cmdr} bought {entry["Count"]} {entry["Type"]} from {station}')
-            if station in this.sheet.carrierTabNames.keys():
+            if this.sheet and station in this.sheet.carrierTabNames.keys():
                 logger.debug('Station known, creating queue entry')
                 # Something for us to do, lets queue it
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_CMDR_BUY, entry))
@@ -795,7 +792,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 "CancelTrade": true
             }
             """
-            if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
+            if this.carrierCallsign and this.sheet and this.carrierCallsign in this.sheet.carrierTabNames.keys():
                 logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
                 this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE, entry))
             else:
@@ -813,7 +810,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 "DepartureTime": "2025-03-09T03:36:10Z"
             }
             """
-            if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
+            if this.carrierCallsign and this.sheet and this.carrierCallsign in this.sheet.carrierTabNames.keys():
                 logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
                 this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
         case 'CarrierJump':
@@ -917,7 +914,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 }
             }
             """
-            if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
+            if this.carrierCallsign and this.sheet and this.carrierCallsign in this.sheet.carrierTabNames.keys():
                 logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
                 this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
         case 'CarrierStats':
@@ -1029,7 +1026,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 ]
             }
             """
-            if this.carrierCallsign and this.carrierCallsign in this.sheet.carrierTabNames.keys():
+            if this.carrierCallsign and this.sheet and this.carrierCallsign in this.sheet.carrierTabNames.keys():
                 logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
                 this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_TRANSFER, entry))
         case 'CarrierDepositFuel':
@@ -1042,7 +1039,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 "Total": 245
             }
             """
-            if station in this.sheet.carrierTabNames.keys():
+            if this.sheet and station in this.sheet.carrierTabNames.keys():
                 logger.debug(f'Carrier "{station}" known, creating queue entry')
                 # Lets make a synthic entry, to mimick a MarketSell request
                 sellEntry = {
