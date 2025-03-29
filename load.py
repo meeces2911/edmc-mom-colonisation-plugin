@@ -46,6 +46,12 @@ KILLSWITCH_CMDR_BUYSELL = 'cmdr buysell commodity'
 KILLSWITCH_CARRIER_TRANSFER = 'carrier transfer'
 KILLSWITCH_CARRIER_RECONCILE = 'carrier reconcile'
 
+CONFIG_SHEET_NAME = 'mom_config_sheet_name'
+CONFIG_ASSIGNED_CARRIER = 'mom_assigned_carrier'
+CONFIG_UI_PLUGIN_STATUS = 'mom_show_plugin_status'
+CONFIG_UI_SHOW_CARRIER = 'mom_show_assigned_carrier'
+CONFIG_FEAT_TRACK_DELIVERY = 'mom_feature_track_delivery'
+
 # Use the same 'icons' as the EDSM plugin
 IMG_KNOWN_B64 = 'R0lGODlhEAAQAMIEAFWjVVWkVWS/ZGfFZ////////////////yH5BAEKAAQALAAAAAAQABAAAAMvSLrc/lAFIUIkYOgNXt5g14Dk0AQlaC1CuglM6w7wgs7rMpvNV4q932VSuRiPjQQAOw=='
 IMG_UNKNOWN_B64 = 'R0lGODlhEAAQAKEDAGVLJ+ddWO5fW////yH5BAEKAAMALAAAAAAQABAAAAItnI+pywYRQBtA2CtVvTwjDgrJFlreEJRXgKSqwB5keQ6vOKq1E+7IE5kIh4kCADs='
@@ -67,15 +73,15 @@ class This:
         self.requests_session.headers['User-Agent'] = user_agent
 
         self.sheet: Sheet | None = None
-        self.configSheetName: tk.StringVar = tk.StringVar(value=config.get_str('mom_config_sheet_name', default='EDMC Plugin Settings'))
+        self.configSheetName: tk.StringVar = tk.StringVar(value=config.get_str(CONFIG_SHEET_NAME, default='EDMC Plugin Settings'))
 
         self.currentCargo: dict | None = None
         self.carrierCallsign: str | None = None
         self.cargoCapacity: int = 0
-        self.cmdrsAssignedCarrier: tk.StringVar = tk.StringVar(value=config.get_str('mom_assigned_carrier'))
+        self.cmdrsAssignedCarrier: tk.StringVar = tk.StringVar(value=config.get_str(CONFIG_ASSIGNED_CARRIER))
 
         self.clearAuthButton: tk.Button | None = None
-        self.settingsClosed: bool = False
+        self.pauseWork: bool = False
 
         self.carrierAPIEnabled: tk.BooleanVar = tk.BooleanVar(value=config.get_bool('capi_fleetcarrier', default=False))  # Don't change this name, its used by EDMC
         self.lastCarrierQueryTime: tk.IntVar = tk.IntVar(value=config.get_int('fleetcarrierquerytime', default=0))  # Don't change this name, its used by EDMC
@@ -83,9 +89,13 @@ class This:
         self.capiMutex: threading.Semaphore = threading.Semaphore()
 
         self.uiFrame: tk.Frame | None = None
+        self.uiFrameRows: AutoInc = AutoInc(start=0)
         self._IMG_KNOWN = tk.PhotoImage(data=IMG_KNOWN_B64)
         self._IMG_UNKNOWN = tk.PhotoImage(data=IMG_UNKNOWN_B64)
         self.pluginStatusIcon: tk.Label | None = None
+        self.showPluginStatus: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_UI_PLUGIN_STATUS, default=True))
+        self.showAssignedCarrier: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_UI_SHOW_CARRIER, default=True))
+        self.featureTrackDelivery: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_FEAT_TRACK_DELIVERY, default=False))
 
 
     def __del__(self):
@@ -125,8 +135,9 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
     BOXY = 2
     SEPY = 10
 
-    this.settingsClosed = False
-    this.cmdrsAssignedCarrier.set(config.get_str('mom_assigned_carrier'))   # Refetch this from the config db, in case its changed since start up
+    logger.info('Settings opened, pausing worker thread')
+    this.pauseWork = True
+    this.cmdrsAssignedCarrier.set(config.get_str(CONFIG_ASSIGNED_CARRIER))   # Refetch this from the config db, in case its changed since start up
 
     frame = nb.Frame(parent)
     frame.columnconfigure(1, weight=1)
@@ -168,11 +179,20 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
 
     ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row.get(), columnspan=4, padx=PADX, pady=PADY+4, sticky=tk.EW)
 
+    nb.Checkbutton(frame, text='Show Connection Status', variable=this.showPluginStatus).grid(row=row.get(), column=0, padx=PADX, pady=PADY, sticky=tk.W)
+    nb.Checkbutton(frame, text='Show Currently Assigned Carrier', variable=this.showAssignedCarrier).grid(row=row.get(), column=0, padx=PADX, pady=PADY, sticky=tk.W)
+
     with row as cur_row:
         nb.Label(frame, text='Currently Assigned Carrier').grid(row=cur_row, column=0, padx=PADX, pady=PADY, sticky=tk.W)
         nb.OptionMenu(
             frame, this.cmdrsAssignedCarrier, this.cmdrsAssignedCarrier.get(), *this.sheet.carrierTabNames.values()
         ).grid(row=cur_row, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
+
+    ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row.get(), columnspan=4, padx=PADX, pady=PADY, sticky=tk.EW)
+
+    nb.Checkbutton(
+        frame, text='Delivery Tracking (Opt-in to Delivery tracking. This is currently not supported for all usecases)', variable=this.featureTrackDelivery
+    ).grid(row=row.get(), column=0, padx=PADX, pady=PADY, sticky=tk.W)
 
     return frame
 
@@ -191,10 +211,22 @@ def clear_saved_settings(parent) -> None:
     if response == 'yes':   # TODO: Can we work out what constant should be used here
         logger.warning('Clearing settings')
         logger.debug('  Clearing Config Sheet Name')
-        config.delete('mom_config_sheet_name', suppress=True)
+        config.delete(CONFIG_SHEET_NAME, suppress=True)
         logger.debug('  Clearing CMDR Assigned Carrier')
-        config.delete('mom_assigned_carrier', suppress=True)
+        config.delete(CONFIG_ASSIGNED_CARRIER, suppress=True)
+        logger.debug('  UI Show Plugin Status')
+        config.delete(CONFIG_UI_PLUGIN_STATUS, suppress=True)
+        logger.debug('  UI Show Assigned Carrier')
+        config.delete(CONFIG_UI_SHOW_CARRIER, suppress=True)
+        logger.debug('  Feature Delivery Tracking')
+        config.delete(CONFIG_FEAT_TRACK_DELIVERY, suppress=True)
+
         config.save()
+
+        # Reset the checkboxes to something sensible
+        this.showPluginStatus.set(True)
+        this.showAssignedCarrier.set(True)
+        this.featureTrackDelivery.set(False)
 
 def prefs_changed(cmdr: str | None, is_beta: bool) -> None:
     """
@@ -202,40 +234,68 @@ def prefs_changed(cmdr: str | None, is_beta: bool) -> None:
     """
 
     # Save settings to DB
-    config.set('mom_config_sheet_name', this.configSheetName.get())
-    config.set('mom_assigned_carrier', this.cmdrsAssignedCarrier.get())
+    config.set(CONFIG_SHEET_NAME, this.configSheetName.get())
+    config.set(CONFIG_ASSIGNED_CARRIER, this.cmdrsAssignedCarrier.get())
+    config.set(CONFIG_UI_PLUGIN_STATUS, this.showPluginStatus.get())
+    config.set(CONFIG_UI_SHOW_CARRIER, this.showAssignedCarrier.get())
+    config.set(CONFIG_FEAT_TRACK_DELIVERY, this.featureTrackDelivery.get())
 
-    this.settingsClosed = True
+    # Update the widgets
+    this.uiFrameRows = AutoInc(start=0)
+    for widget in this.uiFrame.winfo_children():
+        widget.destroy()
+    this.uiFrame.grid(row=0)
+    this.uiFrame.configure(height=1)
+    
+    _add_status_widget()
+    _add_carrier_widget()
 
-    initial_startup()
+    theme.update(this.uiFrame)
+
+    # Ok, now we can continue our worker thread
+    logger.info('Settings closed, resuming worker thread')
+    this.pauseWork = False
+
 
 def plugin_app(parent: tk.Frame) -> tk.Frame:
-    """Add our UI widgets here"""
-    frame = tk.Frame(parent)
-    row = AutoInc(start=0)
+    """Add our UI widgets here"""    
+    this.uiFrame = tk.Frame(parent)
+    this.uiFrameRows = AutoInc(start=0)
 
-    with row as cur_row:
-        tk.Label(frame, text='Status:', ).grid(row=cur_row, column=0, sticky=tk.W)
-        this.pluginStatusIcon = tk.Label(frame, image=this._IMG_UNKNOWN)
-        this.pluginStatusIcon.grid(row=cur_row, column=1, sticky=tk.W)
+    _add_status_widget()
+    _add_carrier_widget()
 
-    this.uiFrame = frame
-    return frame
+    theme.update(this.uiFrame)
+    return this.uiFrame
+
+def _add_status_widget() -> None:
+    frame = this.uiFrame
+    row = this.uiFrameRows
+
+    if this.showPluginStatus.get():
+        with row as cur_row:
+            tk.Label(frame, text='Status:', ).grid(row=cur_row, column=0, sticky=tk.W)
+            this.pluginStatusIcon = tk.Label(frame, image=this._IMG_UNKNOWN)
+            this.pluginStatusIcon.grid(row=cur_row, column=1, sticky=tk.W)    
 
 def _add_carrier_widget() -> None:
     frame = this.uiFrame
-    row = AutoInc(start=1)
-        
-    with row as cur_row:
-        tk.Label(frame, text="Carrier:").grid(row=cur_row, column=0, sticky=tk.W)
-        dropdown = tk.OptionMenu(
-            frame, this.cmdrsAssignedCarrier, this.cmdrsAssignedCarrier.get(), *this.sheet.carrierTabNames.values()
-        )
-        dropdown.grid(row=cur_row, column=1, sticky=tk.W)
-        dropdown.configure(background=ttk.Style().lookup('TMenu', 'background'), highlightthickness=0, borderwidth=0)
-        dropdown['menu'].configure(background=ttk.Style().lookup('TMenu', 'background'))        # TODO: Come back later and continue bashing this until it works
+    row = this.uiFrameRows
 
-    theme.update(frame)
+    if this.showAssignedCarrier.get() and this.sheet:
+        with row as cur_row:
+            tk.Label(frame, text="Carrier:").grid(row=cur_row, column=0, sticky=tk.W)
+            dropdown = tk.OptionMenu(
+                frame, this.cmdrsAssignedCarrier, this.cmdrsAssignedCarrier.get(), *this.sheet.carrierTabNames.values()
+            )
+            dropdown.grid(row=cur_row, column=1, sticky=tk.W)
+            dropdown.configure(background=ttk.Style().lookup('TMenu', 'background'), highlightthickness=0, borderwidth=0)
+            dropdown['menu'].configure(background=ttk.Style().lookup('TMenu', 'background'))        # TODO: Come back later and continue bashing this until it works
+
+def _update_status_icon(newIcon: tk.PhotoImage) -> None:
+    """Updates the Plugin Status icon if its currently viewable"""
+    if this.showPluginStatus.get() and this.pluginStatusIcon:
+        this.pluginStatusIcon['image'] = newIcon
 
 def plugin_start3(plugin_dir: str) -> str:
     """
@@ -299,23 +359,30 @@ def worker() -> None:
                     logger.debug('Main: Shutting down, exiting thread')
                     return None
 
+    # Add any of our UI widgets that require sheet data
+    _add_carrier_widget()
+    theme.update(this.uiFrame)
+
     # Then start the main loop
     logger.debug("Startup complete, entering main loop")
     while True:
         # Do some stuff
         try:
-        
-            # Auth token has been cleared via the button in settings
-            if not this.auth.access_token:
-                while not this.settingsClosed:
+            # Settings have been opened, lets pause for a sec
+            if this.pauseWork:
+                while this.pauseWork:
                     if config.shutting_down:
-                        logger.debug("Main: Shutting down, exiting thread")
-                        return None
+                        logger.debug("Main: Shutting down, existing thread")
+                        return
                     # Spin
                     time.sleep(1 / 10)
-            
-                time.sleep(1)   # Give the settings window a second to actually close before we stall the UI
-                this.auth.refresh()
+                
+                # Auth token has been cleared via the button in settings
+                if not this.auth.access_token:
+                    this.auth.refresh()
+
+                # Settings change, fetch everything from scratch    
+                initial_startup()
 
             while process_kill_siwtches():
                 logger.warning('Killsiwtch Active, reporting paused... [retrying in 60 seconds]')
@@ -327,7 +394,7 @@ def worker() -> None:
                         return None
 
             # Update the status indicator to show that we're all good to go
-            this.pluginStatusIcon['image'] = this._IMG_KNOWN
+            _update_status_icon(this._IMG_KNOWN)
 
             ##logger.debug('Checking for next item in the queue... [Queue Empty: ' + str(this.queue.empty()) + ']')
             try:
@@ -343,7 +410,7 @@ def worker() -> None:
                 return None
         
         except Exception:
-            this.pluginStatusIcon['image'] = this._IMG_UNKNOWN
+            _update_status_icon(this._IMG_UNKNOWN)
             logger.error(traceback.format_exc())
             # wait 30 seconds and try again
             for i in range(1, 30):
@@ -368,9 +435,6 @@ def initial_startup() -> None:
     
     # Record the fact that we're using the plugin
     this.sheet.record_plugin_usage(monitor.cmdr, VERSION)
-
-    # Add any of our UI widgets that require sheet data
-    _add_carrier_widget()
 
 def process_kill_siwtches() -> bool:
     """Go through all the killswitches and if any match, return True to suspend the plugin"""

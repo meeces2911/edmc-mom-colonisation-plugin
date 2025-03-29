@@ -14,6 +14,11 @@ from pathlib import Path
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
+# TODO: This duplication is dumb
+CONFIG_SHEET_NAME = 'mom_config_sheet_name'
+CONFIG_ASSIGNED_CARRIER = 'mom_assigned_carrier'
+CONFIG_FEAT_TRACK_DELIVERY = 'mom_feature_track_delivery'
+
 class Sheet:
     BASE_SHEET_END_POINT = 'https://sheets.googleapis.com'
     SPREADSHEET_ID = SPREADSHEET_ID
@@ -47,8 +52,8 @@ class Sheet:
             # So make sure we don't call config.get_str, as that blocks if config.shutting_down is true
             return
         
-        self.configSheetName = tk.StringVar(value=config.get_str('mom_configSheetName', default='EDMC Plugin Settings'))
-        self.cmdrsAssignedCarrier = tk.StringVar(value=config.get_str('mom_assigned_carrier'))
+        self.configSheetName = tk.StringVar(value=config.get_str(CONFIG_SHEET_NAME, default='EDMC Plugin Settings'))
+        self.cmdrsAssignedCarrier = tk.StringVar(value=config.get_str(CONFIG_ASSIGNED_CARRIER))
             
         self.check_and_authorise_access_to_spreadsheet()
 
@@ -416,7 +421,7 @@ class Sheet:
                         continue
                     
                     logger.info(f'found "{row[2]}"')
-                    config.set('mom_assigned_carrier', row[2])
+                    config.set(CONFIG_ASSIGNED_CARRIER, row[2])
                     config.save()
                     break
 
@@ -447,7 +452,7 @@ class Sheet:
         ]
         update = False
 
-        if self.sheetFunctionality.get(sheet, {}).get('Delivery', False):
+        if self.sheetFunctionality.get(sheet, {}).get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
             if inTransit or amount > 0:
                 logger.debug(f'Checking for existing row for {commodity}')
                 existingValue = self.inTransitCommodities.pop(commodity, None)
@@ -495,10 +500,14 @@ class Sheet:
         if update and bodyValue[2] == 0:
             # Clear the row
             bodyValue = ['', '', '']
-            if self.sheetFunctionality[sheet].get('Delivery', False):
+            if self.sheetFunctionality[sheet].get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
                 bodyValue.append('')
+            else:
+                bodyValue.append(None)
             if self.sheetFunctionality[sheet].get('Timestamp', False):
                 bodyValue.append('')
+            else:
+                bodyValue.append(None)
 
         body = {
             'range': range,
@@ -514,7 +523,7 @@ class Sheet:
             response = self.update_data(range, body)
         
         # Now format the row we just created
-        if self.sheetFunctionality[sheet].get('Delivery', False):
+        if self.sheetFunctionality[sheet].get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
             logger.debug('Formatting Delivery cell')
             updates = response.get('updates', response)
             updatedRange = updates.get('updatedRange')
@@ -876,7 +885,7 @@ class Sheet:
             logger.error(f'Carrier {sheet} not known, bailing')
             return
         
-        if not self.sheetFunctionality[sheet].get('Delivery', False):
+        if not self.sheetFunctionality[sheet].get('Delivery', False) or not config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
             logger.debug('Sheet not tracking delivery, so skipping in-transit check')
             return
         
