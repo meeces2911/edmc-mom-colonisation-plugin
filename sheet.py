@@ -45,6 +45,12 @@ class Sheet:
         self.commodityNamesToNice: dict[str, str] = {}
         self.commodityNamesFromNice: dict[str, str] = {}
         self.sheetFunctionality: dict[str, dict[str, bool]] = {}
+        
+        
+        """
+            This ones needs a bit of explaining:
+                [commodity] = (amount, A1range)
+        """
         self.inTransitCommodities: dict[str, tuple[int, str]] = {}
 
         if config.shutting_down:
@@ -121,6 +127,7 @@ class Sheet:
     
     def _convert_A1_range_to_idx_range(self, a1Str: str, skipHeaderRow: bool = False) -> dict:
         # 'EDMC Plugin Settings'!E1:G4
+        logger.debug('Converting A1 range to index')
         splits = a1Str.split('!')
         sheetName = splits[0][1:-1].replace("''", "'")              # 'Explorer''s Rest' -> Explorer's Rest
         ranges = splits[1].split(':')
@@ -134,7 +141,7 @@ class Sheet:
                 'startRowIndex': rangeStart[1] + rowOffset,         # Inclusive
                 'endRowIndex': rangeEnd[1] + 1,                     # Exclusive (ie, + 1 from where you want to finish)
                 'startColumnIndex': rangeStart[0],                  # Inclusive
-                'endColumnIndex': rangeEnd[0]                       # Exclusive (ie, + 1 from where you want to finish)
+                'endColumnIndex': rangeEnd[0] + 1                   # Exclusive (ie, + 1 from where you want to finish)
             }
 
     def _get_datetime_string(self) -> str:
@@ -885,15 +892,50 @@ class Sheet:
             logger.error(f'Carrier {sheet} not known, bailing')
             return
         
-        if not self.sheetFunctionality[sheet].get('Delivery', False) or not config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
-            logger.debug('Sheet not tracking delivery, so skipping in-transit check')
-            return
-        
         if clear:
             logger.debug("Clearing in-transit commodities")
+            
+            rowsToDelete: list = []
+            offsets: dict[int, int] = {}
+            for commodity in self.inTransitCommodities:
+                amount = self.inTransitCommodities[commodity][0]
+                range = self.inTransitCommodities[commodity][1]
+
+                # Lets just double check what we think we're about to delete matches whats currently there
+                data = self.fetch_data(range)
+                logger.debug(data)
+                if data.get('values'):
+                    row = data['values'][0]
+                    logger.debug(f'Comparing "{row[1]}" vs "{self.commodity_type_name_to_dropdown(commodity)}" and "{row[2]}" vs "{amount}"')
+                    if row[1] == self.commodity_type_name_to_dropdown(commodity) and int(row[2]) == amount:
+                        # Both Commodity name and amount match, so lets get rid of it
+                        idxRange = self._convert_A1_range_to_idx_range(range)
+                        offset = offsets.get(idxRange['sheetId'], 0)
+
+                        if len(rowsToDelete) > 0:
+                            # We need to offset these by the rows we're deleting
+                            logger.debug(f'Offsetting range by {offset}')
+                            idxRange['startRowIndex'] -= offset
+                            idxRange['endRowIndex'] -= offset
+
+                        rowsToDelete.append(
+                            {
+                                "deleteRange": {
+                                    "range": idxRange,
+                                    "shiftDimension": "ROWS"
+                                }
+                            }
+                        )
+
+                        offsets[idxRange['sheetId']] = offset + (idxRange['endRowIndex'] - idxRange['startRowIndex'])
+                        logger.debug(offsets)
+            #logger.debug(rowsToDelete)
+            self.update_sheet(rowsToDelete)
             self.inTransitCommodities = {}
-            logger.warning('Clearing in-transit commodities, but leaving spreadsheet rows')
-            #TODO: Also clean up spreadsheet rows ?
+            return
+
+        if not self.sheetFunctionality[sheet].get('Delivery', False) or not config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
+            logger.debug('Sheet not tracking delivery, so skipping in-transit check')
             return
 
         data = self.fetch_data(f"'{sheet}'!A:E")
