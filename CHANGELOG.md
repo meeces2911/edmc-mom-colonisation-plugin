@@ -1,10 +1,14 @@
 # Change Log
 
-## 1.2.0
+## 1.2.0-beta1
 
 ### What's Changed
 * Added In-Transit Commodity tracking. If you're hauling something to a carrier, and that carrier has `Delivery` tracking enabled, then a new entry will appear on the Carrier tab with the **Delivered** checkbox unticked. Once the cargo has been sold to the Carrier the checkbox will be ticked. (in theory)
-  >Additional quirks with this are, it relies on the CMDR selecting the carrier they are currently filling. If they then choose to sell the cargo elsewhere, the spreadsheet will need manually correcting to remove this. #TODO Can this be solved?
+  * In-Transit Commodity tracker requires both the spreadsheet settings to be updated to enable this for a given carrier
+  * As well as each commander opting-in to it in their EDMC settings. This option will be removed in a future update once more testing as been done
+* Added Status Indicator widget to EDMCs display. This will change to red if the spreadsheet hasn't been connected to successfully
+* Added 'Carrier' widget to EDMCs display. This is used by the In-Transit delivery tracker to know which carrier you are working on.
+* Added new settings options to hide both widgets
 
 ### Known Issues
 * Buy Order table will be updated even when setting a Buy order to something we don't track. No values are changed though
