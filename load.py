@@ -8,10 +8,10 @@ import threading
 import tkinter as tk
 import requests
 import traceback
+import sys
 
 from tkinter import ttk
 from threading import Lock, Thread
-from monitor import monitor
 from pathlib import Path
 from queue import SimpleQueue
 
@@ -20,10 +20,12 @@ import time
 import json
 
 import myNotebook as nb
+from monitor import monitor
 from config import config, appname, appversion, user_agent
 from companion import CAPIData, SERVER_LIVE, capi_fleetcarrier_query_cooldown, session as csession
 from ttkHyperlinkLabel import HyperlinkLabel
 from prefs import AutoInc
+from theme import theme
 
 from sheet import Sheet
 from auth import Auth, SPREADSHEET_ID
@@ -43,6 +45,10 @@ KILLSWITCH_SCS_SELL = 'scs sell commodity'
 KILLSWITCH_CMDR_BUYSELL = 'cmdr buysell commodity'
 KILLSWITCH_CARRIER_TRANSFER = 'carrier transfer'
 KILLSWITCH_CARRIER_RECONCILE = 'carrier reconcile'
+
+# Use the same 'icons' as the EDSM plugin
+IMG_KNOWN_B64 = 'R0lGODlhEAAQAMIEAFWjVVWkVWS/ZGfFZ////////////////yH5BAEKAAQALAAAAAAQABAAAAMvSLrc/lAFIUIkYOgNXt5g14Dk0AQlaC1CuglM6w7wgs7rMpvNV4q932VSuRiPjQQAOw=='
+IMG_UNKNOWN_B64 = 'R0lGODlhEAAQAKEDAGVLJ+ddWO5fW////yH5BAEKAAMALAAAAAAQABAAAAItnI+pywYRQBtA2CtVvTwjDgrJFlreEJRXgKSqwB5keQ6vOKq1E+7IE5kIh4kCADs='
 
 # Probably overkill, but lets start with a sensible framework like how the EDSM plugin does it
 class This:
@@ -75,6 +81,12 @@ class This:
         self.lastCarrierQueryTime: tk.IntVar = tk.IntVar(value=config.get_int('fleetcarrierquerytime', default=0))  # Don't change this name, its used by EDMC
         self.nextUpdateCarrierTime: int = int(time.time())
         self.capiMutex: threading.Semaphore = threading.Semaphore()
+
+        self.uiFrame: tk.Frame | None = None
+        self._IMG_KNOWN = tk.PhotoImage(data=IMG_KNOWN_B64)
+        self._IMG_UNKNOWN = tk.PhotoImage(data=IMG_UNKNOWN_B64)
+        self.pluginStatusIcon: tk.Label | None = None
+
 
     def __del__(self):
         if self.requests_session:
@@ -140,7 +152,6 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
         nb.OptionMenu(
             frame, this.configSheetName, this.configSheetName.get(), *sheetNames
         ).grid(row=cur_row, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
-
     
     with row as cur_row:
         this.clearAuthButton = ttk.Button(
@@ -198,6 +209,34 @@ def prefs_changed(cmdr: str | None, is_beta: bool) -> None:
 
     initial_startup()
 
+def plugin_app(parent: tk.Frame) -> tk.Frame:
+    """Add our UI widgets here"""
+    frame = tk.Frame(parent)
+    row = AutoInc(start=0)
+
+    with row as cur_row:
+        tk.Label(frame, text='Status:', ).grid(row=cur_row, column=0, sticky=tk.W)
+        this.pluginStatusIcon = tk.Label(frame, image=this._IMG_UNKNOWN)
+        this.pluginStatusIcon.grid(row=cur_row, column=1, sticky=tk.W)
+
+    this.uiFrame = frame
+    return frame
+
+def _add_carrier_widget() -> None:
+    frame = this.uiFrame
+    row = AutoInc(start=1)
+        
+    with row as cur_row:
+        tk.Label(frame, text="Carrier:").grid(row=cur_row, column=0, sticky=tk.W)
+        dropdown = tk.OptionMenu(
+            frame, this.cmdrsAssignedCarrier, this.cmdrsAssignedCarrier.get(), *this.sheet.carrierTabNames.values()
+        )
+        dropdown.grid(row=cur_row, column=1, sticky=tk.W)
+        dropdown.configure(background=ttk.Style().lookup('TMenu', 'background'), highlightthickness=0, borderwidth=0)
+        dropdown['menu'].configure(background=ttk.Style().lookup('TMenu', 'background'))        # TODO: Come back later and continue bashing this until it works
+
+    theme.update(frame)
+
 def plugin_start3(plugin_dir: str) -> str:
     """
     Only allow the plugin to run in version 5 and above
@@ -226,6 +265,8 @@ def plugin_stop() -> None:
     
     this.thread.join()
     this.thread = None
+
+    this._IMG_KNOWN = this._IMG_UNKNOWN = None
     
     logger.debug('done')
 
@@ -285,6 +326,9 @@ def worker() -> None:
                         logger.debug('Main: Shutting down, exiting thread')
                         return None
 
+            # Update the status indicator to show that we're all good to go
+            this.pluginStatusIcon['image'] = this._IMG_KNOWN
+
             ##logger.debug('Checking for next item in the queue... [Queue Empty: ' + str(this.queue.empty()) + ']')
             try:
                 item: PushRequest = this.queue.get(timeout=1)
@@ -299,6 +343,7 @@ def worker() -> None:
                 return None
         
         except Exception:
+            this.pluginStatusIcon['image'] = this._IMG_UNKNOWN
             logger.error(traceback.format_exc())
             # wait 30 seconds and try again
             for i in range(1, 30):
@@ -323,6 +368,9 @@ def initial_startup() -> None:
     
     # Record the fact that we're using the plugin
     this.sheet.record_plugin_usage(monitor.cmdr, VERSION)
+
+    # Add any of our UI widgets that require sheet data
+    _add_carrier_widget()
 
 def process_kill_siwtches() -> bool:
     """Go through all the killswitches and if any match, return True to suspend the plugin"""
