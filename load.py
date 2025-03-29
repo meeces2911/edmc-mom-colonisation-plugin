@@ -141,13 +141,19 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
             frame, this.configSheetName, this.configSheetName.get(), *sheetNames
         ).grid(row=cur_row, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
 
-    this.clearAuthButton = ttk.Button(
-        frame,
-        text='Clear Google Authentication',
-        command=lambda: clear_token_and_disable_button(),
-        state=tk.ACTIVE if this.auth.access_token else tk.DISABLED
-    )
-    this.clearAuthButton.grid(row=row.get(), padx=BUTTONX, pady=PADY, sticky=tk.W)
+    
+    with row as cur_row:
+        this.clearAuthButton = ttk.Button(
+            frame,
+            text='Clear Google Authentication',
+            command=lambda: clear_token_and_disable_button(),
+            state=tk.ACTIVE if this.auth.access_token else tk.DISABLED
+        )
+        this.clearAuthButton.grid(row=cur_row, padx=BUTTONX, pady=PADY, sticky=tk.W)
+
+        ttk.Button(
+            frame, text='Clear all settings', command=lambda: clear_saved_settings(parent)
+        ).grid(row=cur_row, column=3, columnspan=1, padx=BUTTONX, pady=PADY, sticky=tk.W)
 
     ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row.get(), columnspan=4, padx=PADX, pady=PADY+4, sticky=tk.EW)
 
@@ -163,6 +169,21 @@ def clear_token_and_disable_button() -> None:
     logger.info('Clearing Google Authentication token')
     this.auth.clear_auth_token()
     this.clearAuthButton.configure(state=tk.DISABLED)
+
+def clear_saved_settings(parent) -> None:
+    response = tk.messagebox.showinfo(
+        'Warning',
+        'This will clear all your EDMC specific settings related to this plugin. It will not change the spreadsheet in any way.\r\n\r\nAre you sure you wish to continue?',
+        parent=parent,
+        type='yesno'        # TODO: Can we work out what constant should be used here
+    )
+    if response == 'yes':   # TODO: Can we work out what constant should be used here
+        logger.warning('Clearing settings')
+        logger.debug('  Clearing Config Sheet Name')
+        config.delete('mom_config_sheet_name', suppress=True)
+        logger.debug('  Clearing CMDR Assigned Carrier')
+        config.delete('mom_assigned_carrier', suppress=True)
+        config.save()
 
 def prefs_changed(cmdr: str | None, is_beta: bool) -> None:
     """
