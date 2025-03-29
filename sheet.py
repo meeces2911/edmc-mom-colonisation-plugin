@@ -42,12 +42,15 @@ class Sheet:
         self.sheetFunctionality: dict[str, dict[str, bool]] = {}
         self.inTransitCommodities: dict[str, tuple[int, str]] = {}
 
-        if not config.shutting_down:
+        if config.shutting_down:
             # If shutdown is called during the intial stages of auth, we won't have been initialised yet
             # So make sure we don't call config.get_str, as that blocks if config.shutting_down is true
-            self.configSheetName = tk.StringVar(value=config.get_str('configSheetName', default='EDMC Plugin Settings'))
+            return
+        
+        self.configSheetName = tk.StringVar(value=config.get_str('mom_configSheetName', default='EDMC Plugin Settings'))
+        self.cmdrsAssignedCarrier = tk.StringVar(value=config.get_str('mom_assigned_carrier'))
             
-            self.check_and_authorise_access_to_spreadsheet()
+        self.check_and_authorise_access_to_spreadsheet()
 
     def check_and_authorise_access_to_spreadsheet(self, skipReauth=False) -> any:
         """Checks and (Re)Authorises access to the spreadsheet. Returns the current sheets"""
@@ -131,6 +134,16 @@ class Sheet:
 
     def _get_datetime_string(self) -> str:
         return datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T',' ').replace('+00:00', '')        
+
+    def _get_carrier_name_from_id(self, id: str) -> str:
+        return self.carrierTabNames[id]
+    
+    def _get_carrier_id_from_name(self, name: str) -> str:
+        for carrierId in self.carrierTabNames.keys():
+            carrierName = self.carrierTabNames[carrierId]
+            if carrierName == name:
+                return carrierId
+        return 'UNKNOWN'
 
     def fetch_data(self, query: str) -> any:
         """Actually send a request to Google"""
@@ -282,6 +295,10 @@ class Sheet:
             return
         
         sheet = f"'{self.configSheetName.get()}'"
+        if sheet == "''":
+            logger.error('No EDMC Plugin Settings sheet selected')
+            return
+
         dataRange = f'{sheet}!A:C'
         carrierRange = f'{sheet}!J:L'
         marketRange = f'{sheet}!O:P'
@@ -373,14 +390,35 @@ class Sheet:
 
         self.killswitches['last updated'] = time.time()
 
-    def populate_cmdr_data(self) -> None:
+    def populate_cmdr_data(self, cmdr: str) -> None:
         """Populate CMDR specific data on start up"""
         # This shouldn't be called more than once, as we just want to pre-populate some stuff after a shutdown
         try:
-            
+            systemInfoSheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
+            cmdrInfoRange = self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'G:I'
+
+            data = self.fetch_data_bulk([f'{systemInfoSheet}!{cmdrInfoRange}'])
+            if not data or len(data) == 0:
+                return
+
             # TODO: Fetch any in-transit cargo
-            # TODO: Fetch current assign carrier
-            pass
+            
+            # Fetch current assigned carrier, and save it to our settings
+            if self.cmdrsAssignedCarrier.get() == '':
+                logger.info('#### CMDR assigned carrier currently unknown, getting from spreadhsheet... ####')
+                for row in data['valueRanges'][0]['values']:
+                    # Skip blank rows, and those that don't have the carrier set
+                    if len(row) < 3:
+                        continue
+                    
+                    # Also skip any rows which aren't for us
+                    if row[0] != cmdr:
+                        continue
+                    
+                    logger.info(f'found "{row[2]}"')
+                    config.set('mom_assigned_carrier', row[2])
+                    config.save()
+                    break
 
         except Exception:
             logger.error(traceback.format_exc())
@@ -705,7 +743,7 @@ class Sheet:
         """Updates anything we wnat to track about the current CMDR"""
         logger.debug('Building CMDR Update Message')
         sheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
-        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'G1'}"
+        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'G:I'}"
         data = self.fetch_data(range)
         logger.debug(data)
 

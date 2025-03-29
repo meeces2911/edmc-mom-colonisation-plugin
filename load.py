@@ -319,6 +319,7 @@ def initial_startup() -> None:
     # Request some initial settings
     this.sheet.populate_initial_settings()
     this.killswitches = this.sheet.killswitches
+    this.sheet.populate_cmdr_data(monitor.cmdr)
     
     # Record the fact that we're using the plugin
     this.sheet.record_plugin_usage(monitor.cmdr, VERSION)
