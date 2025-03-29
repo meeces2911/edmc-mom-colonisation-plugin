@@ -524,7 +524,7 @@ def process_item(item: PushRequest) -> None:
                 if this.killswitches.get(KILLSWITCH_CARRIER_JUMP, 'true') != 'true':
                     logger.warning('DISABLED by killswitch, ignoring')
                     return
-                destination = item.data.get('Body')
+                destination = item.data.get('Body', item.data.get('SystemName'))
                 departTime = item.data.get('DepartureTime')
                 this.sheet.update_carrier_jump_location(sheetName, destination, departTime)
             case PushRequest.TYPE_SCS_SELL:
@@ -1009,6 +1009,21 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             # Keep track of the call sign for easy lookups later
             this.carrierCallsign = entry['Callsign']
             logger.debug(f'Carrier ID updated to {this.carrierCallsign}')
+        case 'CarrierLocation':
+            """
+            {
+                'timestamp': '2025-03-29T07:31:11Z',
+                'event': 'CarrierLocation',
+                'CarrierID': 3707348992,
+                'StarSystem': 'Orgen',
+                'SystemAddress': 3657533756130,
+                'BodyID': 15
+            }
+            """
+            if this.carrierCallsign and this.sheet and this.carrierCallsign in this.sheet.carrierTabNames.keys():
+                logger.debug(f'cCarrier "{this.carrierCallsign}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_LOC_UPDATE, entry['StarSystem']))
+                this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
         case 'CargoTransfer':
             """
             {
