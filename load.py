@@ -265,7 +265,6 @@ def prefs_changed(cmdr: str | None, is_beta: bool) -> None:
     logger.info('Settings closed, resuming worker thread')
     this.pauseWork = False
 
-
 def plugin_app(parent: tk.Frame) -> tk.Frame:
     """Add our UI widgets here"""    
     this.uiFrame = tk.Frame(parent)
@@ -295,7 +294,7 @@ def _add_carrier_widget() -> None:
         with row as cur_row:
             tk.Label(frame, text="Carrier:").grid(row=cur_row, column=0, sticky=tk.W)
             dropdown = tk.OptionMenu(
-                frame, this.cmdrsAssignedCarrier, this.cmdrsAssignedCarrier.get(), *this.sheet.carrierTabNames.values()
+                frame, this.cmdrsAssignedCarrier, this.cmdrsAssignedCarrier.get(), *this.sheet.carrierTabNames.values(), command=lambda value: config.set(CONFIG_ASSIGNED_CARRIER, value)
             )
             dropdown.grid(row=cur_row, column=1, sticky=tk.W)
             dropdown.configure(background=ttk.Style().lookup('TMenu', 'background'), highlightthickness=0, borderwidth=0)

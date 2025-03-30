@@ -936,6 +936,8 @@ class Sheet:
             #logger.debug(rowsToDelete)
             if len(rowsToDelete) > 0:
                 self.update_sheet(rowsToDelete)
+            
+            logger.debug('done')
             self.inTransitCommodities = {}
             return
 
