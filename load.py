@@ -76,7 +76,8 @@ class This:
         self.configSheetName: tk.StringVar = tk.StringVar(value=config.get_str(CONFIG_SHEET_NAME, default='EDMC Plugin Settings'))
 
         self.currentCargo: dict | None = None
-        self.carrierCallsign: str | None = None
+        self.latestCarrierCallsign: str | None = None
+        self.myCarrierCallsign: str | None = None
         self.cargoCapacity: int = 0
         self.cmdrsAssignedCarrier: tk.StringVar = tk.StringVar(value=config.get_str(CONFIG_ASSIGNED_CARRIER))
 
@@ -622,7 +623,7 @@ def process_carrier_transfer(sheetName: str, cmdr: str, data:dict) -> None:
 def journal_entry(cmdr, is_beta, system, station, entry, state):    
     location = station
     if not location and entry.get('CarrierID'): # Event must be carrier based
-        location = this.carrierCallsign
+        location = this.latestCarrierCallsign
     logger.debug(entry['event'] + ' at ' + (location or '<unknown>'))
     logger.debug(f'Entry: {entry}')
     logger.debug(f'State: {state}')
@@ -670,7 +671,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_UPDATE, None))
 
             if entry.get('StationType') == 'FleetCarrier':
-                this.carrierCallsign = station
+                this.latestCarrierCallsign = station
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
                 if len(state.get('Cargo', {})) == 0:
                     # If we've found any, remove them from the spreadsheet
@@ -692,7 +693,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             # Update the carrier location
             if this.sheet and station in this.sheet.carrierTabNames.keys():
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_LOC_UPDATE, system))
-                this.carrierCallsign = station
+                this.latestCarrierCallsign = station
 
             # Update cargo capacity if its changed (There might be a better event for this)
             if this.cargoCapacity != state['CargoCapacity']:
@@ -795,11 +796,11 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 "CancelTrade": true
             }
             """
-            if this.carrierCallsign and this.sheet and this.carrierCallsign in this.sheet.carrierTabNames.keys():
-                logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
-                this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE, entry))
+            if this.latestCarrierCallsign and this.sheet and this.latestCarrierCallsign in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{this.latestCarrierCallsign}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, this.latestCarrierCallsign, PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE, entry))
             else:
-                logger.debug(f'Carrier "{this.carrierCallsign}" not known, skipping market update')
+                logger.debug(f'Carrier "{this.latestCarrierCallsign}" not known, skipping market update')
         case 'CarrierJumpRequest' | 'CarrierJumpCancelled':
             """
             {
@@ -813,9 +814,9 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 "DepartureTime": "2025-03-09T03:36:10Z"
             }
             """
-            if this.carrierCallsign and this.sheet and this.carrierCallsign in this.sheet.carrierTabNames.keys():
-                logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
-                this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
+            if this.myCarrierCallsign and this.sheet and this.myCarrierCallsign in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{this.myCarrierCallsign}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
         case 'CarrierJump':
             """
             {
@@ -917,9 +918,9 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 }
             }
             """
-            if this.carrierCallsign and this.sheet and this.carrierCallsign in this.sheet.carrierTabNames.keys():
-                logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
-                this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
+            if this.myCarrierCallsign and this.sheet and this.myCarrierCallsign in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{this.myCarrierCallsign}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
         case 'CarrierStats':
             """
             {
@@ -1010,8 +1011,8 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             }
             """
             # Keep track of the call sign for easy lookups later
-            this.carrierCallsign = entry['Callsign']
-            logger.debug(f'Carrier ID updated to {this.carrierCallsign}')
+            this.myCarrierCallsign = entry['Callsign']
+            logger.debug(f'Carrier ID updated to {this.latestCarrierCallsign}')
         case 'CarrierLocation':
             """
             {
@@ -1023,10 +1024,10 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 'BodyID': 15
             }
             """
-            if this.carrierCallsign and this.sheet and this.carrierCallsign in this.sheet.carrierTabNames.keys():
-                logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
-                this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_LOC_UPDATE, entry['StarSystem']))
-                this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
+            if this.myCarrierCallsign and this.sheet and this.myCarrierCallsign in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{this.myCarrierCallsign}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_LOC_UPDATE, entry['StarSystem']))
+                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
         case 'CargoTransfer':
             """
             {
@@ -1044,9 +1045,9 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 ]
             }
             """
-            if this.carrierCallsign and this.sheet and this.carrierCallsign in this.sheet.carrierTabNames.keys():
-                logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
-                this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_TRANSFER, entry))
+            if this.latestCarrierCallsign and this.sheet and this.latestCarrierCallsign in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{this.latestCarrierCallsign}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, this.latestCarrierCallsign, PushRequest.TYPE_CARRIER_TRANSFER, entry))
         case 'CarrierDepositFuel':
             """
             {
