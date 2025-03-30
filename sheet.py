@@ -450,7 +450,7 @@ class Sheet:
 
     def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int, inTransit: bool = False) -> None:
         """Updates the carrier sheet with some cargo"""
-        if len(sheet) == 0:
+        if not sheet or sheet == '':
             logger.error('No sheet name provided')
             return
         
@@ -934,7 +934,8 @@ class Sheet:
                         offsets[idxRange['sheetId']] = offset + (idxRange['endRowIndex'] - idxRange['startRowIndex'])
                         logger.debug(offsets)
             #logger.debug(rowsToDelete)
-            self.update_sheet(rowsToDelete)
+            if len(rowsToDelete) > 0:
+                self.update_sheet(rowsToDelete)
             self.inTransitCommodities = {}
             return
 

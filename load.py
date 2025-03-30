@@ -33,7 +33,7 @@ from auth import Auth, SPREADSHEET_ID
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
-VERSION = '1.2.0-beta1'
+VERSION = '1.2.0-beta2'
 _CAPI_RESPONSE_TK_EVENT_NAME = '<<CAPIResponse>>'
 
 KILLSWITCH_CMDR_UPDATE = 'cmdr info update'
@@ -139,7 +139,7 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
     this.pauseWork = True
     this.cmdrsAssignedCarrier.set(config.get_str(CONFIG_ASSIGNED_CARRIER))   # Refetch this from the config db, in case its changed since start up
 
-    frame = nb.Frame(parent)
+    frame: tk.Frame = nb.Frame(parent)
     frame.columnconfigure(1, weight=1)
 
     row = AutoInc(start=0)
@@ -194,6 +194,9 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
         frame, text='Delivery Tracking (Opt-in to Delivery tracking. This is currently not supported for all usecases)', variable=this.featureTrackDelivery
     ).grid(row=row.get(), column=0, padx=PADX, pady=PADY, sticky=tk.W)
 
+    # If the dialog is closed without the user clicking ok, make sure we resume the worker
+    frame.bind('<Destroy>', lambda event: prefs_changed_cancelled())
+
     return frame
 
 def clear_token_and_disable_button() -> None:
@@ -228,10 +231,16 @@ def clear_saved_settings(parent) -> None:
         this.showAssignedCarrier.set(True)
         this.featureTrackDelivery.set(False)
 
+def prefs_changed_cancelled() -> None:
+    """Settings dialog has been closed without clicking ok"""
+    logger.info('Settings closed, resuming worker thread')
+    this.pauseWork = False
+
 def prefs_changed(cmdr: str | None, is_beta: bool) -> None:
     """
     Reload settings for new CMDR
     """
+    logger.debug('Saving settings')
 
     # Save settings to DB
     config.set(CONFIG_SHEET_NAME, this.configSheetName.get())
@@ -476,13 +485,13 @@ def process_item(item: PushRequest) -> None:
                 if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
                     logger.warning('DISABLED by killswitch, ignoring')
                     return
-                
+
                 inTransit = False
                 commodity = item.data['Type']
                 amount = int(item.data['Count'])
 
                 if not sheetName:
-                    sheetName = this.sheet.carrierTabNames.get(this.cmdrsAssignedCarrier.get())
+                    sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(this.cmdrsAssignedCarrier.get()))
                     logger.info(f'Carrier not known, assuming in-transit for {sheetName}')
                     inTransit = True
                     amount = amount * -1    # Selling, so carrier should 'loose' this amount (even, if it never really gained it)
@@ -554,21 +563,23 @@ def process_item(item: PushRequest) -> None:
                 this.sheet.reconcile_carrier_market(item.data)
             case PushRequest.TYPE_CMDR_BUY:
                 # This is really only split from the carrier one in case we want to do different things... but could always be merged
+                sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(this.cmdrsAssignedCarrier.get()))
                 logger.info(f'Processing CMDR Buy Request, assuming in-transit for {sheetName}')
                 if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
                     logger.warning('DISABLED by killswitch, ignoring')
                     return
-                if len(sheetName) == 0:
-                    logger.error('Sheetname not provided, skipping')
-                    return
+
                 commodity = item.data['Type']
                 amount = int(item.data['Count'])
+                
                 this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, inTransit=True)
             case PushRequest.TYPE_CARRIER_INTRANSIT_RECALC:
                 logger.info('Processing Carrier In-Transit Recalculate request')
                 resetCargo = False
                 if item.data:
                     resetCargo = bool(item.data.get('clear', False))
+                if not sheetName:
+                    sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(this.cmdrsAssignedCarrier.get()))
                 this.sheet.recalculate_in_transit(sheetName, item.cmdr, clear=resetCargo)
             case _:
                 raise "Unknown PushRequest"
@@ -666,7 +677,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                     # If we've found any, remove them from the spreadsheet
                     this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))
             else:
-                this.queue.put(PushRequest(cmdr, this.cmdrsAssignedCarrier.get(), PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
+                this.queue.put(PushRequest(cmdr, None, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
         case 'Location':
             logger.info(f'Location: In system {system}')
             if station is None:
@@ -734,14 +745,8 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             }
             """
             logger.debug(f'MarketSell: CMDR {cmdr} sold {entry["Count"]} {entry["Type"]} to {station}')
-            if this.sheet and station in this.sheet.carrierTabNames.keys():
-                logger.debug('Station known, creating queue entry')
-                # Something for us to do, lets queue it
-                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, entry))
-            else:
-                logger.debug(f'Station ({station}) unknown, assuming transfer to carrier')
-                # This will get messy
-                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, entry))
+            # Something for us to do, lets queue it
+            this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, entry))
         case 'MarketBuy':
             """
             {
@@ -755,14 +760,9 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             }
             """
             logger.debug(f'MarketBuy: CMDR {cmdr} bought {entry["Count"]} {entry["Type"]} from {station}')
-            if this.sheet and station in this.sheet.carrierTabNames.keys():
-                logger.debug('Station known, creating queue entry')
-                # Something for us to do, lets queue it
-                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_CMDR_BUY, entry))
-            else:
-                logger.debug(f'Station ({station}) unknown, assuming transfer to carrier')
-                # This will get messy
-                this.queue.put(PushRequest(cmdr, this.cmdrsAssignedCarrier.get(), PushRequest.TYPE_CMDR_BUY, entry))
+            # Something for us to do, lets queue it
+            requestType = PushRequest.TYPE_CARRIER_CMDR_BUY if this.sheet.carrierTabNames.get(station) else PushRequest.TYPE_CMDR_BUY
+            this.queue.put(PushRequest(cmdr, station, requestType, entry))
         case 'CarrierTradeOrder':
             """
             // BUY Order
@@ -1025,7 +1025,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             }
             """
             if this.carrierCallsign and this.sheet and this.carrierCallsign in this.sheet.carrierTabNames.keys():
-                logger.debug(f'cCarrier "{this.carrierCallsign}" known, creating queue entry')
+                logger.debug(f'Carrier "{this.carrierCallsign}" known, creating queue entry')
                 this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_LOC_UPDATE, entry['StarSystem']))
                 this.queue.put(PushRequest(cmdr, this.carrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
         case 'CargoTransfer':

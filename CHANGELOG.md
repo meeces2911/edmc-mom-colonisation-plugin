@@ -1,6 +1,6 @@
 # Change Log
 
-## 1.2.0-beta1
+## 1.2.0-beta2
 
 ### What's Changed
 * Added In-Transit Commodity tracking. If you're hauling something to a carrier, and that carrier has `Delivery` tracking enabled, then a new entry will appear on the Carrier tab with the **Delivered** checkbox unticked. Once the cargo has been sold to the Carrier the checkbox will be ticked. (in theory)
