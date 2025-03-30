@@ -432,6 +432,7 @@ def initial_startup() -> None:
     this.sheet.populate_initial_settings()
     this.killswitches = this.sheet.killswitches
     this.sheet.populate_cmdr_data(monitor.cmdr)
+    this.cmdrsAssignedCarrier.set(config.get_str(CONFIG_ASSIGNED_CARRIER))
     
     # Record the fact that we're using the plugin
     this.sheet.record_plugin_usage(monitor.cmdr, VERSION)
