@@ -8,7 +8,18 @@
   * As well as each commander opting-in to it in their EDMC settings. This option will be removed in a future update once more testing as been done
 * Added Status Indicator widget to EDMCs display. This will change to red if the spreadsheet hasn't been connected to successfully
 * Added 'Carrier' widget to EDMCs display. This is used by the In-Transit delivery tracker to know which carrier you are working on.
+  * It will default to the carrier you were assigned to initially (ie, the one mentioned on the System Info sheet)
 * Added new settings options to hide both widgets
+* Handle **CarrierLocation** Journal Events - this means that after the carrier jumps, and the owner is still on line, the spreadsheet will automatically clear the scheduled jump field if they are not on the carrier
+* All saved settings can now be cleared by pressing the **Clear all settings** button. (Hopefully only i'll need to use it, but its there in case anyone else needs it too)
+* Made initial start up slightly (only slightly) faster by batching some of the intial spreadsheet calls
+* Handle **CarrierDepositFuel** Journal Events - this means that 'dontating' fuel to a carrier now counts as a delivery
+
+## Fixed
+* Fixed wrong carrier sheet being updated on carrier jump if you'd docked to another carrier since setting the jump
+* Re-enable early event queuing prior to Google authentication is complete. This means we don't miss out on the start-up events
+* Settings are now saved correctly and should persist between restarts
+* New carriers/sheets not being correctly added to all the places needed when updates to the spreadsheet were detected
 
 ### Known Issues
 * Buy Order table will be updated even when setting a Buy order to something we don't track. No values are changed though
