@@ -186,7 +186,7 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
     with row as cur_row:
         nb.Label(frame, text='Currently Assigned Carrier').grid(row=cur_row, column=0, padx=PADX, pady=PADY, sticky=tk.W)
         nb.OptionMenu(
-            frame, this.cmdrsAssignedCarrier, this.cmdrsAssignedCarrier.get(), *this.sheet.carrierTabNames.values()
+            frame, this.cmdrsAssignedCarrier, '', *this.sheet.carrierTabNames.values()
         ).grid(row=cur_row, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
 
     ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row.get(), columnspan=4, padx=PADX, pady=PADY, sticky=tk.EW)
@@ -295,7 +295,7 @@ def _add_carrier_widget() -> None:
         with row as cur_row:
             tk.Label(frame, text="Carrier:").grid(row=cur_row, column=0, sticky=tk.W)
             dropdown = tk.OptionMenu(
-                frame, this.cmdrsAssignedCarrier, this.cmdrsAssignedCarrier.get(), *this.sheet.carrierTabNames.values(), command=lambda value: config.set(CONFIG_ASSIGNED_CARRIER, value)
+                frame, this.cmdrsAssignedCarrier, '', *this.sheet.carrierTabNames.values(), command=lambda value: config.set(CONFIG_ASSIGNED_CARRIER, value)
             )
             dropdown.grid(row=cur_row, column=1, sticky=tk.W)
             dropdown.configure(background=ttk.Style().lookup('TMenu', 'background'), highlightthickness=0, borderwidth=0)
@@ -401,6 +401,11 @@ def worker() -> None:
                     if config.shutting_down:
                         logger.debug('Main: Shutting down, exiting thread')
                         return None
+
+            # Need to check if we're shutting down before updating the status icon, which checks some settings and hangs
+            if config.shutting_down:
+                logger.debug('Main: Shutting down, exiting thread')
+                return None
 
             # Update the status indicator to show that we're all good to go
             _update_status_icon(this._IMG_KNOWN)
