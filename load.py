@@ -51,6 +51,7 @@ CONFIG_ASSIGNED_CARRIER = 'mom_assigned_carrier'
 CONFIG_UI_PLUGIN_STATUS = 'mom_show_plugin_status'
 CONFIG_UI_SHOW_CARRIER = 'mom_show_assigned_carrier'
 CONFIG_FEAT_TRACK_DELIVERY = 'mom_feature_track_delivery'
+CONFIG_FEAT_ASSUME_CARRIER_UNLOAD_SCS = 'mom_feature_assume_carrier_unload_scs'
 
 # Use the same 'icons' as the EDSM plugin
 IMG_KNOWN_B64 = 'R0lGODlhEAAQAMIEAFWjVVWkVWS/ZGfFZ////////////////yH5BAEKAAQALAAAAAAQABAAAAMvSLrc/lAFIUIkYOgNXt5g14Dk0AQlaC1CuglM6w7wgs7rMpvNV4q932VSuRiPjQQAOw=='
@@ -97,6 +98,7 @@ class This:
         self.showPluginStatus: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_UI_PLUGIN_STATUS, default=True))
         self.showAssignedCarrier: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_UI_SHOW_CARRIER, default=True))
         self.featureTrackDelivery: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_FEAT_TRACK_DELIVERY, default=False))
+        self.featureAssumeCarrierUnloadToSCS: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_FEAT_ASSUME_CARRIER_UNLOAD_SCS, default=True))
 
 
     def __del__(self):
@@ -195,6 +197,8 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
         frame, text='Delivery Tracking (Opt-in to Delivery tracking. This is currently not supported for all usecases)', variable=this.featureTrackDelivery
     ).grid(row=row.get(), column=0, padx=PADX, pady=PADY, sticky=tk.W)
 
+    nb.Checkbutton(frame, text='Assume Carrier Buy is for Unloading to SCS', variable=this.featureAssumeCarrierUnloadToSCS).grid(row=row.get(), column=0, padx=PADX, pady=PADY, sticky=tk.W)
+
     # If the dialog is closed without the user clicking ok, make sure we resume the worker
     frame.bind('<Destroy>', lambda event: prefs_changed_cancelled())
 
@@ -224,6 +228,8 @@ def clear_saved_settings(parent) -> None:
         config.delete(CONFIG_UI_SHOW_CARRIER, suppress=True)
         logger.debug('  Feature Delivery Tracking')
         config.delete(CONFIG_FEAT_TRACK_DELIVERY, suppress=True)
+        logger.debug('  Feature Assume Carrier Unload To SCS')
+        config.delete(CONFIG_FEAT_ASSUME_CARRIER_UNLOAD_SCS, suppress=True)
 
         config.save()
 
@@ -231,6 +237,7 @@ def clear_saved_settings(parent) -> None:
         this.showPluginStatus.set(True)
         this.showAssignedCarrier.set(True)
         this.featureTrackDelivery.set(False)
+        this.featureAssumeCarrierUnloadToSCS.set(True)
 
 def prefs_changed_cancelled() -> None:
     """Settings dialog has been closed without clicking ok"""
@@ -249,6 +256,7 @@ def prefs_changed(cmdr: str | None, is_beta: bool) -> None:
     config.set(CONFIG_UI_PLUGIN_STATUS, this.showPluginStatus.get())
     config.set(CONFIG_UI_SHOW_CARRIER, this.showAssignedCarrier.get())
     config.set(CONFIG_FEAT_TRACK_DELIVERY, this.featureTrackDelivery.get())
+    config.set(CONFIG_FEAT_ASSUME_CARRIER_UNLOAD_SCS, this.featureAssumeCarrierUnloadToSCS.get())
 
     # Update the widgets
     this.uiFrameRows = AutoInc(start=0)
@@ -522,6 +530,9 @@ def process_item(item: PushRequest) -> None:
                 commodity = item.data['Type']
                 amount = int(item.data['Count']) * -1   # We're removing from the carrier
                 this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount)
+                if this.featureAssumeCarrierUnloadToSCS.get():
+                    sheetName = this.sheet.lookupRanges[this.sheet.LOOKUP_SCS_SHEET_NAME]
+                    this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount*-1, inTransit=True, system=item.data['System'])
             case PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE:
                 logger.info('Processing Carrier Buy/Sell Order update')
                 logger.debug(this.killswitches)
@@ -767,6 +778,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             logger.debug(f'MarketBuy: CMDR {cmdr} bought {entry["Count"]} {entry["Type"]} from {station}')
             # Something for us to do, lets queue it
             requestType = PushRequest.TYPE_CARRIER_CMDR_BUY if this.sheet.carrierTabNames.get(station) else PushRequest.TYPE_CMDR_BUY
+            entry['System'] = system
             this.queue.put(PushRequest(cmdr, station, requestType, entry))
         case 'CarrierTradeOrder':
             """

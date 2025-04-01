@@ -375,6 +375,7 @@ class Sheet:
                         for row in valueRange.get('values'):
                             if row[0] == 'Carriers':
                                 continue
+                            # [callsign] = <sheet name>
                             self.carrierTabNames[row[1]] = row[2]
                     case 2: # Market Range
                         for row in valueRange.get('values'):
@@ -416,7 +417,7 @@ class Sheet:
             # TODO: Fetch any in-transit cargo
             
             # Fetch current assigned carrier, and save it to our settings
-            if self.cmdrsAssignedCarrier.get() == '':
+            if not self.cmdrsAssignedCarrier.get():
                 logger.info('#### CMDR assigned carrier currently unknown, getting from spreadhsheet... ####')
                 for row in data['valueRanges'][0]['values']:
                     # Skip blank rows, and those that don't have the carrier set
@@ -448,7 +449,7 @@ class Sheet:
         """Returns the specific commodity name thats matches the one in the spreadsheet"""
         return self.commodityNamesFromNice.get(commodity, commodity.lower())
 
-    def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int, inTransit: bool = False) -> None:
+    def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int, inTransit: bool = False, system: str = None) -> None:
         """Updates the carrier sheet with some cargo"""
         if not sheet or sheet == '':
             logger.error('No sheet name provided')
@@ -456,11 +457,19 @@ class Sheet:
         
         logger.debug(f'Building Carrier Sheet Message (inTransit:{inTransit} commodity:{commodity} amount:{amount})')
         range = f"'{sheet}'!A:A"
-        bodyValue = [
-            cmdr,
-            self.commodity_type_name_to_dropdown(commodity),
-            amount
-        ]
+        
+        if sheet != self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME]:
+            bodyValue = [
+                cmdr,
+                self.commodity_type_name_to_dropdown(commodity),
+                amount
+            ]
+        else:
+            bodyValue = [
+                self.commodity_type_name_to_dropdown(commodity),
+                system,
+                amount
+            ]
         update = False
 
         if self.sheetFunctionality.get(sheet, {}).get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
@@ -549,7 +558,7 @@ class Sheet:
                 range = self._convert_A1_range_to_idx_range(updatedRange)
                 logger.debug(range)
                 # We just want to update Column D
-                range['startColumnIndex'] += 3
+                range['startColumnIndex'] = 3
                 range['endColumnIndex'] = int(range['startColumnIndex']) + 1
                 sheetUpdates: list = [
                     {
@@ -682,6 +691,17 @@ class Sheet:
         logger.debug('Building SCS Sheet Message')
         sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
         range = f"'{sheet}'!A:A"
+        update = False
+
+        deliveryEnabled = self.sheetFunctionality.get(sheet, {}).get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY)
+        if deliveryEnabled:
+            logger.debug('Checking for intransit cargo')
+            inTransitCargo = self.inTransitCommodities.pop(commodity, None)
+            if inTransitCargo:
+                range = inTransitCargo[1]
+                logger.debug(f'Found, updating {range} instead')
+                update = True
+        
         body = {
             'range': range,
             'majorDimension': 'ROWS',
@@ -694,8 +714,51 @@ class Sheet:
                 ]
             ]
         }
+
+        if deliveryEnabled:
+            body['values'][0].append(True)
+
+        if self.sheetFunctionality.get(sheet, {}).get('Timestamp', False):
+            body['values'][0].append(self._get_datetime_string())
+
         logger.debug(body)
-        self.insert_data(range, body)
+        if not update:
+            self.insert_data(range, body)
+        else:
+            response = self.update_data(range, body)
+            # Must be an in-transit, so update the sheet format too
+            # Now format the row we just created
+            logger.debug('Formatting Delivery cell')
+            updates = response.get('updates', response)
+            updatedRange = updates.get('updatedRange')
+            if updatedRange:
+                #logger.debug('updatedRange section found')
+                # Keep track of our in-transit commodities
+                logger.debug('Converting updatedRange to numeric indices')
+                range = self._convert_A1_range_to_idx_range(updatedRange)
+                logger.debug(range)
+                # We just want to update Column D
+                range['startColumnIndex'] = 3
+                range['endColumnIndex'] = int(range['startColumnIndex']) + 1
+                sheetUpdates: list = [
+                    {
+                        'repeatCell': {
+                            'range': range,
+                            'cell': {
+                                'dataValidation': {
+                                    'condition': {
+                                        'type': 'BOOLEAN'
+                                    }
+                                }
+                            },
+                            'fields': 'dataValidation.condition'
+                        }
+                    }
+                ]
+                self.update_sheet(sheetUpdates)   
+            else:
+                logger.error('No updatedRange found in response')
+
 
     def record_plugin_usage(self, cmdr: str, version: str) -> None:
         """Updates the Plugin sheet with usage info"""
