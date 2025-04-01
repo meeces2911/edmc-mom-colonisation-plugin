@@ -503,8 +503,9 @@ def process_item(item: PushRequest) -> None:
                 commodity = item.data['Type']
                 amount = int(item.data['Count'])
 
-                if not sheetName:
-                    sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(this.cmdrsAssignedCarrier.get()))
+                assignedCarrier = this.cmdrsAssignedCarrier.get()
+                if not sheetName and assignedCarrier:
+                    sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(assignedCarrier))
                     logger.info(f'Carrier not known, assuming in-transit for {sheetName}')
                     inTransit = True
                     amount = amount * -1    # Selling, so carrier should 'loose' this amount (even, if it never really gained it)
@@ -579,7 +580,12 @@ def process_item(item: PushRequest) -> None:
                 this.sheet.reconcile_carrier_market(item.data)
             case PushRequest.TYPE_CMDR_BUY:
                 # This is really only split from the carrier one in case we want to do different things... but could always be merged
-                sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(this.cmdrsAssignedCarrier.get()))
+                assignedCarrier = this.cmdrsAssignedCarrier.get()
+                if not assignedCarrier:
+                    logger.info('No assigned carrier, ignoring')
+                    return
+
+                sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(assignedCarrier))
                 logger.info(f'Processing CMDR Buy Request, assuming in-transit for {sheetName}')
                 if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
                     logger.warning('DISABLED by killswitch, ignoring')
@@ -592,10 +598,15 @@ def process_item(item: PushRequest) -> None:
             case PushRequest.TYPE_CARRIER_INTRANSIT_RECALC:
                 logger.info('Processing Carrier In-Transit Recalculate request')
                 resetCargo = False
+                assignedCarrier = this.cmdrsAssignedCarrier.get()
+                
                 if item.data:
                     resetCargo = bool(item.data.get('clear', False))
+                if not sheetName and assignedCarrier:
+                    sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(assignedCarrier))
                 if not sheetName:
-                    sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(this.cmdrsAssignedCarrier.get()))
+                    logger.info('No assigned carrier, ignoring')
+                    return
                 this.sheet.recalculate_in_transit(sheetName, item.cmdr, clear=resetCargo)
             case _:
                 raise "Unknown PushRequest"
