@@ -121,6 +121,7 @@ class PushRequest:
     TYPE_CARRIER_RECONCILE: int = 10
     TYPE_CMDR_BUY: int = 11
     TYPE_CARRIER_INTRANSIT_RECALC: int = 12
+    TYPE_SCS_SYSTEM_ADD: int = 13
 
     def __init__(self, cmdr, station: str, reqType: int, data: dict):
         self.cmdr = cmdr
@@ -608,6 +609,9 @@ def process_item(item: PushRequest) -> None:
                     logger.info('No assigned carrier, ignoring')
                     return
                 this.sheet.recalculate_in_transit(sheetName, item.cmdr, clear=resetCargo)
+            case PushRequest.TYPE_SCS_SYSTEM_ADD:
+                logger.info('Processing SCS System Add request')
+                this.sheet.add_in_progress_scs_system(item.data)
             case _:
                 raise "Unknown PushRequest"
     except Exception:
@@ -726,6 +730,10 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             if this.cargoCapacity != state['CargoCapacity']:
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_UPDATE, None))
             this.cargoCapacity = state['CargoCapacity']
+
+            # Add SCS to spreadsheet if missing
+            if this.sheet and not system in this.sheet.systemsInProgress:
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_SCS_SYSTEM_ADD, system))
         case 'Undocked':
             this.currentCargo = None
         case 'Cargo':

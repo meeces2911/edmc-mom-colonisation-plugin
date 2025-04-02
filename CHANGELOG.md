@@ -15,6 +15,7 @@
 * All saved settings can now be cleared by pressing the **Clear all settings** button. (Hopefully only i'll need to use it, but its there in case anyone else needs it too)
 * Made initial start up slightly (only slightly) faster by batching some of the intial spreadsheet calls
 * Handle **CarrierDepositFuel** Journal Events - this means that 'dontating' fuel to a carrier now counts as a delivery
+* Automatically add an entry to the System Info sheet, if docking to an Unknwon SCS for the first time
 
 ## Fixed
 * Fixed wrong carrier sheet being updated on carrier jump if you'd docked to another carrier since setting the jump

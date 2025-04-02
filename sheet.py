@@ -31,6 +31,7 @@ class Sheet:
     LOOKUP_SCS_SHEET_NAME = 'SCS Sheet'
     LOOKUP_SYSTEMINFO_SHEET_NAME = 'System Info Sheet'
     LOOKUP_CMDR_INFO = 'CMDR Info'
+    LOOKUP_SYSTEMS_IN_PROGRESS = 'In Progress Systems'
 
     def __init__(self, auth: Auth, session: requests.Session):
         self.auth: Auth = auth
@@ -45,6 +46,7 @@ class Sheet:
         self.commodityNamesToNice: dict[str, str] = {}
         self.commodityNamesFromNice: dict[str, str] = {}
         self.sheetFunctionality: dict[str, dict[str, bool]] = {}
+        self.systemsInProgress: list[str] = []
         
         
         """
@@ -316,7 +318,7 @@ class Sheet:
         marketRange = f'{sheet}!O:P'
         featureRange = f'{sheet}!S:V'
         
-        data = self.fetch_data_bulk((dataRange, carrierRange, marketRange, featureRange))
+        data = self.fetch_data_bulk([dataRange, carrierRange, marketRange, featureRange])
 
         logger.debug(data)
         
@@ -396,9 +398,30 @@ class Sheet:
                                 settings[colNames[idx]] = row[idx] == 'TRUE'
 
                             self.sheetFunctionality[row[0]] = settings
-
                 rangeIdx += 1
-        except Exception:
+        except:
+            logger.error(traceback.format_exc())
+
+        # Now get anything that relies on the lookups being set
+        try:
+            systemsInProgressRange = self.lookupRanges[self.LOOKUP_SYSTEMS_IN_PROGRESS]
+
+            data = self.fetch_data_bulk([systemsInProgressRange])
+            logger.debug(data)
+            
+            self.systemsInProgress = []
+
+            rangeIdx = 0
+            for valueRange in data.get('valueRanges'):
+                match rangeIdx:
+                    case 0: # Systems in Progress Range
+                        for row in valueRange.get('values'):
+                            if len(row) == 0 or row[0] == 'System':
+                                continue
+                            if not row[0] in self.systemsInProgress:
+                                self.systemsInProgress.append(row[0])
+                rangeIdx += 1
+        except:
             logger.error(traceback.format_exc())
 
         self.killswitches['last updated'] = time.time()
@@ -759,7 +782,6 @@ class Sheet:
             else:
                 logger.error('No updatedRange found in response')
 
-
     def record_plugin_usage(self, cmdr: str, version: str) -> None:
         """Updates the Plugin sheet with usage info"""
         logger.debug('Building Plugin Usage Message')
@@ -1026,4 +1048,37 @@ class Sheet:
 
         logger.debug(f'Commodities in transit: {self.inTransitCommodities}')
 
-    
+    def add_in_progress_scs_system(self, system: str) -> None:
+        """Adds a new system to the System Info sheet"""
+        logger.debug('Building New SCS System Message')
+        sheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
+        range = f"'{sheet}'!A:A"
+        data = self.fetch_data(range)
+        logger.debug(data)
+
+        found = False
+        for row in data['values']:
+            if row[0] == system:
+                # Already been added by someone else
+                found = True
+                break
+        
+        if found:
+            logger.info('System already exists on System Info sheet, skipping')
+            return
+        
+        body = {
+            'range': range,
+            'majorDimension': 'ROWS',
+            'values': [
+                [
+                    system,
+                    None,   # Build type
+                    None,   # Function
+                    None,   # Architect
+                    'In Progress'
+                ]
+            ]
+        }
+        self.insert_data(range, body)
+        self.systemsInProgress.append(system)
