@@ -19,6 +19,7 @@ import semantic_version
 import time
 import json
 
+import plug
 import myNotebook as nb
 from monitor import monitor
 from config import config, appname, appversion, user_agent
@@ -33,7 +34,7 @@ from auth import Auth, SPREADSHEET_ID
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
-VERSION = '1.2.0-beta2'
+VERSION = '1.2.0'
 _CAPI_RESPONSE_TK_EVENT_NAME = '<<CAPIResponse>>'
 
 KILLSWITCH_CMDR_UPDATE = 'cmdr info update'
@@ -476,6 +477,7 @@ def process_kill_siwtches() -> bool:
         if not this.killswitches.get('enabled') == 'true':
             logger.warning('Killswitch: Enabled = False')
             this.enabled = False
+            plug.show_error('MoM: Plugin Disabled by Killswitch')
             return True
         else:
             this.enabled = True
@@ -483,6 +485,7 @@ def process_kill_siwtches() -> bool:
     if 'minimum version' in this.killswitches:
         if semantic_version.Version(VERSION) < semantic_version.Version(this.killswitches.get('minimum version')):
             logger.warning(f'Killswitch: Minimum Version ({this.killswitches.get("minimum version")}) is higher than us')
+            plug.show_error('MoM: Upgrade Required')
             return True
         
     return False
