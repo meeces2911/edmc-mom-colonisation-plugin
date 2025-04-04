@@ -1,11 +1,10 @@
 # Change Log
 
-## 1.2.0-beta2
+## 1.2.0
 
 ### What's Changed
 * Added In-Transit Commodity tracking. If you're hauling something to a carrier, and that carrier has `Delivery` tracking enabled, then a new entry will appear on the Carrier tab with the **Delivered** checkbox unticked. Once the cargo has been sold to the Carrier the checkbox will be ticked. (in theory)
-  * In-Transit Commodity tracker requires both the spreadsheet settings to be updated to enable this for a given carrier
-  * As well as each commander opting-in to it in their EDMC settings. This option will be removed in a future update once more testing as been done
+  * In-Transit Commodity tracker requires both the spreadsheet settings to be updated and the CMDRs plugin to have the setting enabled to enable this for a given carrier
 * Added new setting **Assume Carrier Buy is for Unloading to SCS** which controls whether to enable delivery tracking for the SCS Offload sheet separately. Set this to **False** to disable the delivery tracking
 * Added Status Indicator widget to EDMCs display. This will change to red if the spreadsheet hasn't been connected to successfully
 * Added 'Carrier' widget to EDMCs display. This is used by the In-Transit delivery tracker to know which carrier you are working on.
