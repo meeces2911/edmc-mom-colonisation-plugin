@@ -51,9 +51,9 @@ class Sheet:
         
         """
             This ones needs a bit of explaining:
-                [commodity] = (amount, A1range)
+                [commodity] = [A1range] = amount
         """
-        self.inTransitCommodities: dict[str, tuple[int, str]] = {}
+        self.inTransitCommodities: dict[str, dict[str, int]] = {}
 
         if config.shutting_down:
             # If shutdown is called during the intial stages of auth, we won't have been initialised yet
@@ -478,7 +478,7 @@ class Sheet:
             logger.error('No sheet name provided')
             return
         
-        logger.debug(f'Building Carrier Sheet Message (inTransit:{inTransit} commodity:{commodity} amount:{amount})')
+        logger.debug(f'Building Carrier Sheet Message (sheet:{sheet} inTransit:{inTransit} commodity:{commodity} amount:{amount})')
         range = f"'{sheet}'!A:A"
         
         if sheet != self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME]:
@@ -500,17 +500,22 @@ class Sheet:
                 logger.debug(f'Checking for existing row for {commodity} in {self.inTransitCommodities}')
                 existingValue = self.inTransitCommodities.get(commodity, None)
                 if existingValue:
-                    if inTransit or (not inTransit and existingValue[1].startswith(f"'{sheet}'")):
-                        logger.debug('Existing in-transit row found, updating')
-                        # Buying or Selling cargo to the carrier, just update the existing in-transit row
-                        range = existingValue[1]
-                        if inTransit:
-                            # Buying additional cargo for something thats already in-transit, just update the existing row with the additional value
-                            bodyValue[2] += existingValue[0]
-                        else:
-                            # Selling cargo, so this is no longer in transit
-                            self.inTransitCommodities.pop(commodity)
-                        update = True
+                    for range in existingValue:
+                        if range.startswith(f"'{sheet}'"):
+                            logger.debug('Existing in-transit row found, updating')
+                            # Buying or Selling cargo to the carrier, just update the existing in-transit row
+                            if inTransit:
+                                # Buying additional cargo for something thats already in-transit, just update the existing row with the additional value
+                                bodyValue[2] += existingValue[range]
+                            else:
+                                # Selling cargo, so this is no longer in transit
+                                logger.debug('Removing in-transit range from commodity')
+                                existingValue.pop(range)
+                                if len(existingValue) == 0:
+                                    logger.debug('No ranges left, removing commodity from in-transit list')
+                                    self.inTransitCommodities.pop(commodity)
+                            update = True
+                            break
                     else:
                         # We've recorded an in-transit move for one carrier, then dropped it off at the next... err... panic?!
                         logger.warning('In-Transit row found, but for a different carrier, ignoring')
@@ -577,7 +582,9 @@ class Sheet:
                 #logger.debug('updatedRange section found')
                 # Keep track of our in-transit commodities
                 if inTransit:
-                    self.inTransitCommodities[commodity] = (int(bodyValue[2]), updatedRange)
+                    existingValue = self.inTransitCommodities.get(commodity, {})
+                    existingValue[updatedRange] = int(bodyValue[2])
+                    self.inTransitCommodities[commodity] = existingValue
                     logger.debug(f'New in-transit commodity added: {self.inTransitCommodities}')
 
                 logger.debug('Converting updatedRange to numeric indices')
@@ -722,11 +729,14 @@ class Sheet:
         deliveryEnabled = self.sheetFunctionality.get(sheet, {}).get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY)
         if deliveryEnabled:
             logger.debug('Checking for intransit cargo')
-            inTransitCargo = self.inTransitCommodities.pop(commodity, None)
+            inTransitCargo = self.inTransitCommodities.get(commodity, None)
             if inTransitCargo:
-                range = inTransitCargo[1]
-                logger.debug(f'Found, updating {range} instead')
-                update = True
+                for existingRange in inTransitCargo:
+                    if existingRange.startswith(f"'{sheet}'"):
+                        #range = inTransitCargo[1]
+                        range = existingRange
+                        logger.debug(f'Found, updating {range} instead')
+                        update = True
         
         body = {
             'range': range,
@@ -990,37 +1000,38 @@ class Sheet:
             rowsToDelete: list = []
             offsets: dict[int, int] = {}
             for commodity in self.inTransitCommodities:
-                amount = self.inTransitCommodities[commodity][0]
-                range = self.inTransitCommodities[commodity][1]
+                intransitCommodity = self.inTransitCommodities[commodity]
+                for range in intransitCommodity:
+                    amount = intransitCommodity[range]
 
-                # Lets just double check what we think we're about to delete matches whats currently there
-                data = self.fetch_data(range)
-                logger.debug(data)
-                if data.get('values'):
-                    row = data['values'][0]
-                    logger.debug(f'Comparing "{row[1]}" vs "{self.commodity_type_name_to_dropdown(commodity)}" and "{row[2]}" vs "{amount}"')
-                    if row[1] == self.commodity_type_name_to_dropdown(commodity) and int(row[2]) == amount:
-                        # Both Commodity name and amount match, so lets get rid of it
-                        idxRange = self._convert_A1_range_to_idx_range(range)
-                        offset = offsets.get(idxRange['sheetId'], 0)
+                    # Lets just double check what we think we're about to delete matches whats currently there
+                    data = self.fetch_data(range)
+                    logger.debug(data)
+                    if data.get('values'):
+                        row = data['values'][0]
+                        logger.debug(f'Comparing "{row[1]}" vs "{self.commodity_type_name_to_dropdown(commodity)}" and "{row[2]}" vs "{amount}"')
+                        if row[1] == self.commodity_type_name_to_dropdown(commodity) and int(row[2]) == amount:
+                            # Both Commodity name and amount match, so lets get rid of it
+                            idxRange = self._convert_A1_range_to_idx_range(range)
+                            offset = offsets.get(idxRange['sheetId'], 0)
 
-                        if len(rowsToDelete) > 0:
-                            # We need to offset these by the rows we're deleting
-                            logger.debug(f'Offsetting range by {offset}')
-                            idxRange['startRowIndex'] -= offset
-                            idxRange['endRowIndex'] -= offset
+                            if len(rowsToDelete) > 0:
+                                # We need to offset these by the rows we're deleting
+                                logger.debug(f'Offsetting range by {offset}')
+                                idxRange['startRowIndex'] -= offset
+                                idxRange['endRowIndex'] -= offset
 
-                        rowsToDelete.append(
-                            {
-                                "deleteRange": {
-                                    "range": idxRange,
-                                    "shiftDimension": "ROWS"
+                            rowsToDelete.append(
+                                {
+                                    "deleteRange": {
+                                        "range": idxRange,
+                                        "shiftDimension": "ROWS"
+                                    }
                                 }
-                            }
-                        )
+                            )
 
-                        offsets[idxRange['sheetId']] = offset + (idxRange['endRowIndex'] - idxRange['startRowIndex'])
-                        logger.debug(offsets)
+                            offsets[idxRange['sheetId']] = offset + (idxRange['endRowIndex'] - idxRange['startRowIndex'])
+                            logger.debug(offsets)
             #logger.debug(rowsToDelete)
             if len(rowsToDelete) > 0:
                 self.update_sheet(rowsToDelete)
@@ -1047,7 +1058,10 @@ class Sheet:
                 # Something thats in transit!
                 # NB. To keep things simple, lets enforce only 1 commodity of the same type can be in transit at once
                 commodity = self.dropdown_to_commodity_type_name(row[1])
-                self.inTransitCommodities[commodity] = (int(row[2]), f"'{sheet}'!A{rowIdx}:E{rowIdx}")
+                range = f"'{sheet}'!A{rowIdx}:E{rowIdx}"
+                intransitCommodity = self.inTransitCommodities.get(commodity, {})
+                intransitCommodity[range] = int(row[2])
+                self.inTransitCommodities[commodity] = intransitCommodity
 
         logger.debug(f'Commodities in transit: {self.inTransitCommodities}')
 

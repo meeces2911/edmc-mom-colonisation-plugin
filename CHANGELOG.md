@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.2.1
+
+## Fixed
+* Fixed In-Transit items across multiple carriers not being correctly recorded after being dropped off, resulting in duplicate entries
+
 ## 1.2.0
 
 ### What's Changed

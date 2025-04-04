@@ -4,3 +4,4 @@
 - What if the in-transit row changes between pickup and delivery (ie, 'fixing up' the spreadsheet) ?
 - Removing hard coding of spreadsheet
 - Add Disable Plugin option
+- When setting Sell Orders, the starting inventory is taken into account, and the Buy Order cell is not cleared
