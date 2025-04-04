@@ -2,6 +2,55 @@
 
 This [EDMC](https://github.com/EDCD/EDMarketConnector) plugin is designed to help any Mercs particpating in the building of the Grand Tiberian Highway by doing most of the admin work of keeping the spreadsheet updated for you.
 
+## Features
+
+#### Carrier Owners
+* Automatically set/update buy orders in the spreadsheet when setting them on the carrier
+  * >See **Buy Order Adjustments** in the Settings controlled via spreadsheet section below for additional configuration
+* Automatically updates the **Current System** cell whenever a CMDR docks
+* Automatically updates the **Scheduled Jump** cell whenever a jump is scheduled
+
+#### Individual CMDRs
+* Automatically adds an entry to the relevant carrier sheet when buying or selling something from/to the carrier
+* Automatically adds an entry to the SCS Offload sheet when 'selling' cargo the the System Colonisation Ship
+* Automatically keeps CMDR Cargo capacity on the System Info tab up to date
+* [1.2.0] (**BETA**) Automatically adds an entry to your the selected carrier's sheet when buying a commodity
+* [1.2.0] Automaticlaly updates the System Info sheet when docking
+
+#### General
+* [1.2.0] (**WIP**) Plugin Widgets
+  
+  ![Plugin Widgets](./documentation/Plugin_Widgets.png)
+  
+  * **Status**
+    * Green indicator when connected to the spreadsheet
+    * Red indicator when an error has occurred
+   * **Carrier**
+     * A dropdown containing the known list of carrier (sheets). Used to indicate which carrier delivery tracking entries should be added to
+
+## Settings
+### Controlled via the spreadsheet
+![Spreadsheet Settings](./documentation/Spreadsheet_Settings.png)
+* Delivery (Tracking)
+  > Controls whether the Delivered column on the relevant Carrier sheet should be populated or not. If set to False then the cell will remain blank when adding a new row to the carrier tab
+* Timestamps
+  > Controls whether the Timestamp coilumn on the relevant Carrier sheet should be populated or not. If set to False then the cell will remain blank when adding a new row to the carrier tab
+* Buy Order Adjustment
+  > If setting Buy Orders based on the Proportional value alone is desiered then leave this as false. If, however, you are setting the Buy Orders excluding whats already on the carrier, then this should be set to true to keep the Totals lined up.
+
+  > When this is set to True, then the Buy Order value added to the top table is adjusted by the amount of cargo already existing on the Carrier. For example, if you have **50** steel left on the carrier, and a Buy Order set in game to **1000**, then the Buy Order added to the table will be **1050**.
+
+### Controlled individually via the plugin
+![Plugin Settings](./documentation/Plugin_Settings.png)
+* Show Connection Status
+  > Set to False to hide the Status widget 
+* Show Currently Assigned Carrier
+  > Set to False to hide the Carrier widget
+* Delivery Tracking
+  > Set to False to not send delivery tracking information as part of the carrier update message. If not currently working on the highway, then use this to stop sending 'in-transit' messages
+* Assume Carrier Buy is for Unloading to SCS
+  > When buying from a Carrier in a system thats known to have an SCS in it, then assume the delivery is going to the SCS
+
 ## Installation Instructions
 1. Install [EDMC](https://github.com/EDCD/EDMarketConnector/releases) if you haven't already done so
 1. Configure EDMC with some required settings

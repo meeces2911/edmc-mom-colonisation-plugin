@@ -14,6 +14,11 @@ from pathlib import Path
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
+# TODO: This duplication is dumb
+CONFIG_SHEET_NAME = 'mom_config_sheet_name'
+CONFIG_ASSIGNED_CARRIER = 'mom_assigned_carrier'
+CONFIG_FEAT_TRACK_DELIVERY = 'mom_feature_track_delivery'
+
 class Sheet:
     BASE_SHEET_END_POINT = 'https://sheets.googleapis.com'
     SPREADSHEET_ID = SPREADSHEET_ID
@@ -26,6 +31,7 @@ class Sheet:
     LOOKUP_SCS_SHEET_NAME = 'SCS Sheet'
     LOOKUP_SYSTEMINFO_SHEET_NAME = 'System Info Sheet'
     LOOKUP_CMDR_INFO = 'CMDR Info'
+    LOOKUP_SYSTEMS_IN_PROGRESS = 'In Progress Systems'
 
     def __init__(self, auth: Auth, session: requests.Session):
         self.auth: Auth = auth
@@ -37,15 +43,29 @@ class Sheet:
         self.marketUpdatesSetBy: dict[str, dict] = {}
         self.lookupRanges: dict[str, str] = {}
         self.buyOrdersIveSet: dict[str, int] = {}
+        self.commodityNamesToNice: dict[str, str] = {}
+        self.commodityNamesFromNice: dict[str, str] = {}
+        self.sheetFunctionality: dict[str, dict[str, bool]] = {}
+        self.systemsInProgress: list[str] = []
+        
+        
+        """
+            This ones needs a bit of explaining:
+                [commodity] = (amount, A1range)
+        """
+        self.inTransitCommodities: dict[str, tuple[int, str]] = {}
 
-        if not config.shutting_down:
+        if config.shutting_down:
             # If shutdown is called during the intial stages of auth, we won't have been initialised yet
             # So make sure we don't call config.get_str, as that blocks if config.shutting_down is true
-            self.configSheetName = tk.StringVar(value=config.get_str('configSheetName', default='EDMC Plugin Settings'))
+            return
+        
+        self.configSheetName = tk.StringVar(value=config.get_str(CONFIG_SHEET_NAME, default='EDMC Plugin Settings'))
+        self.cmdrsAssignedCarrier = tk.StringVar(value=config.get_str(CONFIG_ASSIGNED_CARRIER))
             
-            self.check_and_authorise_access_to_spreadsheet()
+        self.check_and_authorise_access_to_spreadsheet()
 
-    def check_and_authorise_access_to_spreadsheet(self) -> any:
+    def check_and_authorise_access_to_spreadsheet(self, skipReauth=False) -> any:
         """Checks and (Re)Authorises access to the spreadsheet. Returns the current sheets"""
         logger.debug('Checking access to spreadsheet')
         res = self.requests_session.get(f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}?fields=sheets/properties(sheetId,title)')
@@ -53,36 +73,40 @@ class Sheet:
         logger.debug(f'{res}{sheet_list_json}')
 
         if res.status_code != requests.codes.ok:
-            # Need to authorise this specific file
-            logger.debug('404 - access not granted yet, showing picker')
-            self.handler = LocalHTTPServer()
-            self.handler.start()
-            
-            webbrowser.open(self.handler.gpickerEndpoint)
-            logger.info('Waiting for auth response')
-            while not self.handler.response:
-                # spin
-                time.sleep(1 / 10)
+            if not skipReauth:
+                # Need to authorise this specific file
+                logger.debug('404 - access not granted yet, showing picker')
+                self.handler = LocalHTTPServer()
+                self.handler.start()
                 
-                # TODO: how does python properly handle timeouts
+                webbrowser.open(self.handler.gpickerEndpoint)
+                logger.info('Waiting for auth response')
+                while not self.handler.response:
+                    # spin
+                    time.sleep(1 / 10)
+                    
+                    # TODO: how does python properly handle timeouts
+                    
+                    # EDMC shutdown, bail
+                    if config.shutting_down:
+                        logger.warning('Sheet Authorise - aborting, shutting down')
+                        self.handler.close()
+                        self.handler = None
+                        return None
                 
-                # EDMC shutdown, bail
-                if config.shutting_down:
-                    logger.warning('Sheet Authorise - aborting, shutting down')
-                    self.handler.close()
-                    self.handler = None
-                    return None
-            
-            self.handler.close()
-            logger.debug(f'response: {self.handler.response}')
-            
-            # For now, lets ignore the response entirely and use our known values instead
-            res = self.requests_session.get(f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}?fields=sheets/properties(sheetId,title)')
-            sheet_list_json = res.json()
-            if res.status_code != requests.codes.ok:
-                res.raise_for_status()
+                self.handler.close()
+                logger.debug(f'response: {self.handler.response}')
+                
+                # For now, lets ignore the response entirely and use our known values instead
+                res = self.requests_session.get(f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}?fields=sheets/properties(sheetId,title)')
+                sheet_list_json = res.json()
+                if res.status_code != requests.codes.ok:
+                    res.raise_for_status()
 
-            self.handler = None
+                self.handler = None
+            else:
+                logger.error("No longer authorised")
+                return
 
         # {'sheets': [{'properties': {'sheetId': 944449574, 'title': 'Carrier'}}, {'properties': {'sheetId': 824956629, 'title': 'CMDR - Marasesti'}}, {'properties': {'sheetId': 1007636203, 'title': 'FC Tritons Reach'}}, {'properties': {'sheetId': 344055582, 'title': 'CMDR - T2F-7KX'}}, {'properties': {'sheetId': 1890618844, 'title': "CMDR-Roxy's Roost"}}, {'properties': {'sheetId': 684229219, 'title': 'CMDR - Galactic Bridge'}}, {'properties': {'sheetId': 1525608748, 'title': 'CMDR - Nebulous Terraforming'}}, {'properties': {'sheetId': 48909025, 'title': 'CMDR - CLB Voqooe Lagoon'}}, {'properties': {'sheetId': 1395555039, 'title': 'Buy orders'}}, {'properties': {'sheetId': 1241558540, 'title': 'EDMC Plugin Testing'}}, {'properties': {'sheetId': 943290351, 'title': 'WIP - System Info'}}, {'properties': {'sheetId': 1304500094, 'title': 'WIP - SCS Offload'}}, {'properties': {'sheetId': 480283806, 'title': 'WIP - Marasesti'}}, {'properties': {'sheetId': 584248853, 'title': 'Detail3-Steel'}}, {'properties': {'sheetId': 206284589, 'title': 'Detail2-Polymers'}}, {'properties': {'sheetId': 948337654, 'title': 'Detail1-Medical Diagnostic Equipment'}}, {'properties': {'sheetId': 1936079810, 'title': 'WIP - Data'}}, {'properties': {'sheetId': 2062075030, 'title': 'Sheet3'}}, {'properties': {'sheetId': 1653004935, 'title': 'Colonization'}}, {'properties': {'sheetId': 135970834, 'title': 'Shoppinglist'}}]}
         # Lets mangle this a bit to be more useful
@@ -103,8 +127,9 @@ class Sheet:
                 rowStr += char
         return [colIdx, int(rowStr)-1]
     
-    def _convert_A1_range_to_idx_range(self, a1Str: str, skipHeaderRow: bool) -> dict:
+    def _convert_A1_range_to_idx_range(self, a1Str: str, skipHeaderRow: bool = False) -> dict:
         # 'EDMC Plugin Settings'!E1:G4
+        logger.debug('Converting A1 range to index')
         splits = a1Str.split('!')
         sheetName = splits[0][1:-1].replace("''", "'")              # 'Explorer''s Rest' -> Explorer's Rest
         ranges = splits[1].split(':')
@@ -118,9 +143,22 @@ class Sheet:
                 'startRowIndex': rangeStart[1] + rowOffset,         # Inclusive
                 'endRowIndex': rangeEnd[1] + 1,                     # Exclusive (ie, + 1 from where you want to finish)
                 'startColumnIndex': rangeStart[0],                  # Inclusive
-                'endColumnIndex': rangeEnd[0]                       # Exclusive (ie, + 1 from where you want to finish)
+                'endColumnIndex': rangeEnd[0] + 1                   # Exclusive (ie, + 1 from where you want to finish)
             }
-        
+
+    def _get_datetime_string(self) -> str:
+        return datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T',' ').replace('+00:00', '')        
+
+    def _get_carrier_name_from_id(self, id: str) -> str:
+        return self.carrierTabNames[id]
+    
+    def _get_carrier_id_from_name(self, name: str) -> str:
+        for carrierId in self.carrierTabNames.keys():
+            carrierName = self.carrierTabNames[carrierId]
+            if carrierName == name:
+                return carrierId
+        return 'UNKNOWN'
+
     def fetch_data(self, query: str) -> any:
         """Actually send a request to Google"""
         base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values/{query}'
@@ -143,11 +181,39 @@ class Sheet:
         except:
             return {}
 
-    def insert_data(self, range: str, body: dict) -> any:
+    def fetch_data_bulk(self, ranges: list[str]) -> any:
+        """Fetch multiple bits of data from the spreadsheet"""
+        base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values:batchGet?'
+        for range in ranges:
+            base_url += f'ranges={range}&'
+        base_url += 'majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE'
+        logger.debug(f'Sending request to GET {base_url}')
+        try:
+            token_refresh_attempted = False
+            while True:
+                res = self.requests_session.get(base_url, timeout=10)
+                if res.status_code == requests.codes.ok:
+                    return res.json()
+                elif res.status_code == requests.codes.unauthorized:
+                    logger.error(f'{res}{res.json()}')
+                    if not token_refresh_attempted:
+                        token_refresh_attempted = True
+                        self.auth.refresh()
+                        continue
+                else:
+                    logger.error(f'{res}{res.json()}')
+                return {}
+        except:
+            return {}
+
+    def insert_data(self, range: str, body: dict, returnValues: bool = False) -> any:
         """Add/update some data in the spreadsheet"""
         # POST https://sheets.googleapis.com/v4/spreadsheets/SPREADSHEET_ID/values/Sheet1!A1:E1:append?valueInputOption=VALUE_INPUT_OPTION
         # Append adds new rows to the end of the given range
         base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values/{range}:append?valueInputOption=USER_ENTERED'
+        if returnValues:
+            base_url += '&includeValuesInResponse=true'
+
         logger.debug(f'Sending request to POST {base_url}')
         
         # Handle single quotes in sheet names
@@ -233,18 +299,32 @@ class Sheet:
         # Lets get everything on the settings sheet and wade through it
         # {{BASE_END_POINT}}/v4/spreadsheets/{{SPREADSHEET_ID}}/values/'EDMC Plugin Testing'!A:E
         logger.debug('Fetching latest settings')
+
+        # Make sure any new sheets/tabs get their ids added to the 'self.sheets' dict
+        self.check_and_authorise_access_to_spreadsheet(skipReauth=True)
+
+        if config.shutting_down:
+            # If shutdown is called before we have the sheet name, make sure we bail
+            # as making a call to config.get_str blocks
+            return
         
         sheet = f"'{self.configSheetName.get()}'"
-        data = self.fetch_data(f'{sheet}!A:C')
-        carriers = self.fetch_data(f'{sheet}!J:L')
-        markets = self.fetch_data(f'{sheet}!O:P')
-        #logger.debug(data)
-        #logger.debug(carriers)
-        #logger.debug(markets)
+        if sheet == "''":
+            logger.error('No EDMC Plugin Settings sheet selected')
+            return
+
+        dataRange = f'{sheet}!A:C'
+        carrierRange = f'{sheet}!J:L'
+        marketRange = f'{sheet}!O:P'
+        featureRange = f'{sheet}!S:V'
+        
+        data = self.fetch_data_bulk([dataRange, carrierRange, marketRange, featureRange])
+
+        logger.debug(data)
         
         # TODO: Error handling
         # for now, just bail, and try again later
-        if not data or not carriers or not markets:
+        if not data or len(data) == 0:
             return
 
         self.killswitches = {}
@@ -253,6 +333,7 @@ class Sheet:
         self.lookupRanges = {}
         self.commodityNamesToNice = {}
         self.commodityNamesFromNice = {}
+        self.sheetFunctionality = {}
 
         section_killswitches = False
         section_lookups = False
@@ -260,55 +341,123 @@ class Sheet:
 
         # Lets not let temporary failures in these settings kill the entire plugin
         try:
+            rangeIdx = 0
+            for valueRange in data.get('valueRanges'):
+                match rangeIdx:
+                    case 0: # Data Range
+                        for row in valueRange.get('values'):
+                            #logger.debug(row)
 
-            for row in data.get('values'):
-                logger.debug(row)
+                            if len(row) == 0:
+                                # Blank line, skip
+                                section_killswitches = False
+                                section_lookups = False
+                                section_commodity_mapping = False
+                                continue
+                            elif row[0] == 'Killswitches':
+                                section_killswitches = True
+                                continue
+                            elif row[0] == 'Lookups':
+                                section_lookups = True
+                                continue
+                            elif row[0] == 'Commodity Mapping':
+                                section_commodity_mapping = True
+                                continue
 
-                if len(row) == 0:
-                    # Blank line, skip
-                    section_killswitches = False
-                    section_lookups = False
-                    section_commodity_mapping = False
-                    continue
-                elif row[0] == 'Killswitches':
-                    section_killswitches = True
-                    continue
-                elif row[0] == 'Lookups':
-                    section_lookups = True
-                    continue
-                elif row[0] == 'Commodity Mapping':
-                    section_commodity_mapping = True
-                    continue
+                            if section_killswitches:
+                                self.killswitches[row[0].lower()] = row[1].lower()
+                                continue
+                            elif section_lookups:
+                                self.lookupRanges[row[0]] = row[1]
+                                continue
+                            elif section_commodity_mapping:
+                                self.commodityNamesToNice[row[0]] = row[1]
+                                self.commodityNamesFromNice[row[1]] = row[0]    # TODO: How do we handle double ups here ? Do we care ?
+                    case 1: # Carrier Range
+                        for row in valueRange.get('values'):
+                            if row[0] == 'Carriers':
+                                continue
+                            # [callsign] = <sheet name>
+                            self.carrierTabNames[row[1]] = row[2]
+                    case 2: # Market Range
+                        for row in valueRange.get('values'):
+                            self.marketUpdatesSetBy[row[0]] = {
+                                    'setByOwner': row[1] == 'TRUE'
+                                }
+                    case 3: # Feature Range
+                        colNames: dict[int, str] = {}
+                        for row in valueRange.get('values'):
+                            if row[0] == 'Sheet Functionality':
+                                for idx in range(1, len(row)):
+                                    logger.debug(f'Adding {row[idx]} to Column Names')
+                                    colNames[idx] = row[idx]
+                                continue
+                                
+                            settings: dict[str, bool] = {}
+                            for idx in colNames.keys():
+                                settings[colNames[idx]] = row[idx] == 'TRUE'
 
-                if section_killswitches:
-                    self.killswitches[row[0].lower()] = row[1].lower()
-                    continue
-                elif section_lookups:
-                    self.lookupRanges[row[0]] = row[1]
-                    continue
-                elif section_commodity_mapping:
-                    self.commodityNamesToNice[row[0]] = row[1]
-                    self.commodityNamesFromNice[row[1]] = row[0]    # TODO: How do we handle double ups here ? Do we care ?
+                            self.sheetFunctionality[row[0]] = settings
+                rangeIdx += 1
+        except:
+            logger.error(traceback.format_exc())
 
-            for row in carriers.get('values'):
-                if row[0] == 'Carriers':
-                    continue
-                self.carrierTabNames[row[1]] = row[2]
+        # Now get anything that relies on the lookups being set
+        try:
+            systemsInProgressRange = self.lookupRanges[self.LOOKUP_SYSTEMS_IN_PROGRESS]
 
-            for row in markets.get('values'):
-                self.marketUpdatesSetBy[row[0]] = {
-                        'setByOwner': row[1] == 'TRUE'
-                    }
-        except Exception:
+            data = self.fetch_data_bulk([systemsInProgressRange])
+            logger.debug(data)
+            
+            self.systemsInProgress = []
+
+            rangeIdx = 0
+            for valueRange in data.get('valueRanges'):
+                match rangeIdx:
+                    case 0: # Systems in Progress Range
+                        for row in valueRange.get('values'):
+                            if len(row) == 0 or row[0] == 'System':
+                                continue
+                            if not row[0] in self.systemsInProgress:
+                                self.systemsInProgress.append(row[0])
+                rangeIdx += 1
+        except:
             logger.error(traceback.format_exc())
 
         self.killswitches['last updated'] = time.time()
-        #logger.debug(self.killswitches)
-        #logger.debug(self.carrierTabNames)
-        #logger.debug(self.marketUpdatesSetBy)
-        #logger.debug(self.lookupRanges)
-        logger.debug(self.commodityNamesToNice)
-        logger.debug(self.commodityNamesFromNice)
+
+    def populate_cmdr_data(self, cmdr: str) -> None:
+        """Populate CMDR specific data on start up"""
+        # This shouldn't be called more than once, as we just want to pre-populate some stuff after a shutdown
+        try:
+            systemInfoSheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
+            cmdrInfoRange = self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'G:I'
+
+            data = self.fetch_data_bulk([f'{systemInfoSheet}!{cmdrInfoRange}'])
+            if not data or len(data) == 0:
+                return
+
+            # TODO: Fetch any in-transit cargo
+            
+            # Fetch current assigned carrier, and save it to our settings
+            if not self.cmdrsAssignedCarrier.get():
+                logger.info('#### CMDR assigned carrier currently unknown, getting from spreadhsheet... ####')
+                for row in data['valueRanges'][0]['values']:
+                    # Skip blank rows, and those that don't have the carrier set
+                    if len(row) < 3:
+                        continue
+                    
+                    # Also skip any rows which aren't for us
+                    if row[0] != cmdr:
+                        continue
+                    
+                    logger.info(f'found "{row[2]}"')
+                    config.set(CONFIG_ASSIGNED_CARRIER, row[2])
+                    config.save()
+                    break
+
+        except Exception:
+            logger.error(traceback.format_exc())
 
     def sheet_names(self) -> list[str]:
         if self.sheets:
@@ -321,25 +470,140 @@ class Sheet:
 
     def dropdown_to_commodity_type_name(self, commodity: str) -> str:
         """Returns the specific commodity name thats matches the one in the spreadsheet"""
-        return self.commodityNamesFromNice.get(commodity, commodity)
+        return self.commodityNamesFromNice.get(commodity, commodity.lower())
 
-    def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int) -> None:
+    def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int, inTransit: bool = False, system: str = None) -> None:
         """Updates the carrier sheet with some cargo"""
-        logger.debug('Building Carrier Sheet Message')
+        if not sheet or sheet == '':
+            logger.error('No sheet name provided')
+            return
+        
+        logger.debug(f'Building Carrier Sheet Message (inTransit:{inTransit} commodity:{commodity} amount:{amount})')
         range = f"'{sheet}'!A:A"
+        
+        if sheet != self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME]:
+            bodyValue = [
+                cmdr,
+                self.commodity_type_name_to_dropdown(commodity),
+                amount
+            ]
+        else:
+            bodyValue = [
+                self.commodity_type_name_to_dropdown(commodity),
+                system,
+                amount
+            ]
+        update = False
+
+        if self.sheetFunctionality.get(sheet, {}).get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
+            if inTransit or amount > 0:
+                logger.debug(f'Checking for existing row for {commodity} in {self.inTransitCommodities}')
+                existingValue = self.inTransitCommodities.get(commodity, None)
+                if existingValue:
+                    if inTransit or (not inTransit and existingValue[1].startswith(f"'{sheet}'")):
+                        logger.debug('Existing in-transit row found, updating')
+                        # Buying or Selling cargo to the carrier, just update the existing in-transit row
+                        range = existingValue[1]
+                        if inTransit:
+                            # Buying additional cargo for something thats already in-transit, just update the existing row with the additional value
+                            bodyValue[2] += existingValue[0]
+                        else:
+                            # Selling cargo, so this is no longer in transit
+                            self.inTransitCommodities.pop(commodity)
+                        update = True
+                    else:
+                        # We've recorded an in-transit move for one carrier, then dropped it off at the next... err... panic?!
+                        logger.warning('In-Transit row found, but for a different carrier, ignoring')
+                        # Should we clear the in-transit record ... or just leave it?
+                        # We might just be doing a partial delivery
+                else:
+                    logger.debug('Not found, creating new one')
+
+                bodyValue.append(not inTransit)
+
+                if amount < 0 and inTransit:
+                    # We must be selling to a different station. If we don't actually know about this commodity, then there is no need to add an entry into the sheet
+                    if not update:
+                        logger.info('Commodity not tracked as in-transit, skipping adding new row')
+                        return
+            else:
+                logger.debug('Not in transit, and Buying from the carrier, then mark Delivered as True')
+                bodyValue.append(True)
+        else:
+            if not inTransit:
+                logger.debug('Not in Transit, skipping setting value')
+                bodyValue.append(None)
+            else:
+                # We're buying from a station, but delivery tracking is disabled, so just don't write anything to the sheet
+                logger.info('Delivery Tracking disabled, skipping adding new row')
+                return
+                
+        if self.sheetFunctionality.get(sheet, {}).get('Timestamp', False):
+            bodyValue.append(self._get_datetime_string())
+        else:
+            bodyValue.append(None)
+
+        if update and bodyValue[2] == 0:
+            # Clear the row
+            bodyValue = ['', '', '']
+            if self.sheetFunctionality[sheet].get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
+                bodyValue.append('')
+            else:
+                bodyValue.append(None)
+            if self.sheetFunctionality[sheet].get('Timestamp', False):
+                bodyValue.append('')
+            else:
+                bodyValue.append(None)
+
         body = {
             'range': range,
             'majorDimension': 'ROWS',
             'values': [
-                [
-                    cmdr,
-                    self.commodity_type_name_to_dropdown(commodity),
-                    amount
-                ]
+                bodyValue
             ]
         }
         logger.debug(body)
-        self.insert_data(range, body)
+        if not update:
+            response = self.insert_data(range, body, returnValues=True)
+        else:
+            response = self.update_data(range, body)
+        
+        # Now format the row we just created
+        if self.sheetFunctionality[sheet].get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
+            logger.debug('Formatting Delivery cell')
+            updates = response.get('updates', response)
+            updatedRange = updates.get('updatedRange')
+            if updatedRange:
+                #logger.debug('updatedRange section found')
+                # Keep track of our in-transit commodities
+                if inTransit:
+                    self.inTransitCommodities[commodity] = (int(bodyValue[2]), updatedRange)
+                    logger.debug(f'New in-transit commodity added: {self.inTransitCommodities}')
+
+                logger.debug('Converting updatedRange to numeric indices')
+                range = self._convert_A1_range_to_idx_range(updatedRange)
+                logger.debug(range)
+                # We just want to update Column D
+                range['startColumnIndex'] = 3
+                range['endColumnIndex'] = int(range['startColumnIndex']) + 1
+                sheetUpdates: list = [
+                    {
+                        'repeatCell': {
+                            'range': range,
+                            'cell': {
+                                'dataValidation': {
+                                    'condition': {
+                                        'type': 'BOOLEAN'
+                                    }
+                                }
+                            },
+                            'fields': 'dataValidation.condition'
+                        }
+                    }
+                ]
+                self.update_sheet(sheetUpdates)   
+            else:
+                logger.error('No updatedRange found in response')
     
     def update_carrier_location(self, sheet: str, system: str) -> None:
         """Update the carrier sheet with its current location"""
@@ -386,16 +650,18 @@ class Sheet:
         spreadsheetCommodity = self.commodity_type_name_to_dropdown(commodity)
         logger.debug(f"Updating {spreadsheetCommodity} to {amount}")
 
-        startingInventory = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_STARTING_INV] or 'A1:C20'}")
-        logger.debug(startingInventory)
-        if len(startingInventory) == 0:
-            logger.error('No Starting Inventory found, bailing')
-            return
-        
-        # Fudge the Buy order a bit to keep the ship inventory total correct, by including any starting inventory
-        for row in startingInventory['values']:
-            if row[1] == spreadsheetCommodity and len(row) == 3:
-                amount += int(row[2])
+        if self.sheetFunctionality[sheet].get('Buy Order Adjustment', False):
+            logger.debug('Adjust Buy Order is set, fudging the value to include the Starting Inventory')
+            # Fudge the Buy order a bit to keep the ship inventory total correct, by including any starting inventory
+            startingInventory = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_STARTING_INV] or 'A1:C20'}")
+            logger.debug(startingInventory)
+            if len(startingInventory) == 0:
+                logger.error('No Starting Inventory found, bailing')
+                return
+            
+            for row in startingInventory['values']:
+                if row[1] == spreadsheetCommodity and len(row) == 3:
+                    amount += int(row[2])
 
         # Find our commodity in the list
         buyOrders = self.fetch_data(f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_BUY_ORDERS] or 'F3:H22'}")
@@ -451,6 +717,17 @@ class Sheet:
         logger.debug('Building SCS Sheet Message')
         sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
         range = f"'{sheet}'!A:A"
+        update = False
+
+        deliveryEnabled = self.sheetFunctionality.get(sheet, {}).get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY)
+        if deliveryEnabled:
+            logger.debug('Checking for intransit cargo')
+            inTransitCargo = self.inTransitCommodities.pop(commodity, None)
+            if inTransitCargo:
+                range = inTransitCargo[1]
+                logger.debug(f'Found, updating {range} instead')
+                update = True
+        
         body = {
             'range': range,
             'majorDimension': 'ROWS',
@@ -463,8 +740,50 @@ class Sheet:
                 ]
             ]
         }
+
+        if deliveryEnabled:
+            body['values'][0].append(True)
+
+        if self.sheetFunctionality.get(sheet, {}).get('Timestamp', False):
+            body['values'][0].append(self._get_datetime_string())
+
         logger.debug(body)
-        self.insert_data(range, body)
+        if not update:
+            self.insert_data(range, body)
+        else:
+            response = self.update_data(range, body)
+            # Must be an in-transit, so update the sheet format too
+            # Now format the row we just created
+            logger.debug('Formatting Delivery cell')
+            updates = response.get('updates', response)
+            updatedRange = updates.get('updatedRange')
+            if updatedRange:
+                #logger.debug('updatedRange section found')
+                # Keep track of our in-transit commodities
+                logger.debug('Converting updatedRange to numeric indices')
+                range = self._convert_A1_range_to_idx_range(updatedRange)
+                logger.debug(range)
+                # We just want to update Column D
+                range['startColumnIndex'] = 3
+                range['endColumnIndex'] = int(range['startColumnIndex']) + 1
+                sheetUpdates: list = [
+                    {
+                        'repeatCell': {
+                            'range': range,
+                            'cell': {
+                                'dataValidation': {
+                                    'condition': {
+                                        'type': 'BOOLEAN'
+                                    }
+                                }
+                            },
+                            'fields': 'dataValidation.condition'
+                        }
+                    }
+                ]
+                self.update_sheet(sheetUpdates)   
+            else:
+                logger.error('No updatedRange found in response')
 
     def record_plugin_usage(self, cmdr: str, version: str) -> None:
         """Updates the Plugin sheet with usage info"""
@@ -482,7 +801,7 @@ class Sheet:
 
             if row[0] == cmdr:
                 row[1] = version
-                row[2] = datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T',' ').replace('+00:00', '')
+                row[2] = self._get_datetime_string()
                 setRow = True
                 break
         
@@ -497,7 +816,7 @@ class Sheet:
                     [
                         cmdr,
                         version,
-                        datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T', ' ').replace('+00:00', '')
+                        self._get_datetime_string()
                     ]
                 ]
             }
@@ -528,13 +847,11 @@ class Sheet:
             ]
             self.update_sheet(sheetUpdates)
 
-    
-
     def update_cmdr_attributes(self, cmdr: str, cargoCapacity: int) -> None:
         """Updates anything we wnat to track about the current CMDR"""
         logger.debug('Building CMDR Update Message')
         sheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
-        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'G1'}"
+        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'G:I'}"
         data = self.fetch_data(range)
         logger.debug(data)
 
@@ -660,3 +977,111 @@ class Sheet:
         logger.debug(startingInventory)
         self.update_data(buyOrders['range'], buyOrders)
         self.update_data(startingInventory['range'], startingInventory)
+
+    def recalculate_in_transit(self, sheet: str, cmdr: str, clear: bool = False) -> None:
+        """Checks the current carrier list for any items that might still be in transit since the last time we started"""
+        if not sheet:
+            logger.error(f'Carrier {sheet} not known, bailing')
+            return
+        
+        if clear:
+            logger.debug(f"Clearing in-transit commodities {self.inTransitCommodities}")
+            
+            rowsToDelete: list = []
+            offsets: dict[int, int] = {}
+            for commodity in self.inTransitCommodities:
+                amount = self.inTransitCommodities[commodity][0]
+                range = self.inTransitCommodities[commodity][1]
+
+                # Lets just double check what we think we're about to delete matches whats currently there
+                data = self.fetch_data(range)
+                logger.debug(data)
+                if data.get('values'):
+                    row = data['values'][0]
+                    logger.debug(f'Comparing "{row[1]}" vs "{self.commodity_type_name_to_dropdown(commodity)}" and "{row[2]}" vs "{amount}"')
+                    if row[1] == self.commodity_type_name_to_dropdown(commodity) and int(row[2]) == amount:
+                        # Both Commodity name and amount match, so lets get rid of it
+                        idxRange = self._convert_A1_range_to_idx_range(range)
+                        offset = offsets.get(idxRange['sheetId'], 0)
+
+                        if len(rowsToDelete) > 0:
+                            # We need to offset these by the rows we're deleting
+                            logger.debug(f'Offsetting range by {offset}')
+                            idxRange['startRowIndex'] -= offset
+                            idxRange['endRowIndex'] -= offset
+
+                        rowsToDelete.append(
+                            {
+                                "deleteRange": {
+                                    "range": idxRange,
+                                    "shiftDimension": "ROWS"
+                                }
+                            }
+                        )
+
+                        offsets[idxRange['sheetId']] = offset + (idxRange['endRowIndex'] - idxRange['startRowIndex'])
+                        logger.debug(offsets)
+            #logger.debug(rowsToDelete)
+            if len(rowsToDelete) > 0:
+                self.update_sheet(rowsToDelete)
+            
+            logger.debug('done')
+            self.inTransitCommodities = {}
+            return
+
+        if not self.sheetFunctionality[sheet].get('Delivery', False) or not config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
+            logger.debug('Sheet not tracking delivery, so skipping in-transit check')
+            return
+
+        data = self.fetch_data(f"'{sheet}'!A:E")
+        logger.debug(data)
+
+        rowIdx = 0
+        for row in data['values']:
+            rowIdx += 1
+            if len(row) < 4:
+                continue    # Skip bad rows
+            if row[0] != cmdr:
+                continue    # Not one we care about
+            if row[3] == 'FALSE':
+                # Something thats in transit!
+                # NB. To keep things simple, lets enforce only 1 commodity of the same type can be in transit at once
+                commodity = self.dropdown_to_commodity_type_name(row[1])
+                self.inTransitCommodities[commodity] = (int(row[2]), f"'{sheet}'!A{rowIdx}:E{rowIdx}")
+
+        logger.debug(f'Commodities in transit: {self.inTransitCommodities}')
+
+    def add_in_progress_scs_system(self, system: str) -> None:
+        """Adds a new system to the System Info sheet"""
+        logger.debug('Building New SCS System Message')
+        sheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
+        range = f"'{sheet}'!A:A"
+        data = self.fetch_data(range)
+        logger.debug(data)
+
+        found = False
+        for row in data['values']:
+            if row[0] == system:
+                # Already been added by someone else
+                found = True
+                break
+        
+        if found:
+            logger.info('System already exists on System Info sheet, skipping')
+            return
+        
+        body = {
+            'range': range,
+            'majorDimension': 'ROWS',
+            'values': [
+                [
+                    system,
+                    None,   # Build type
+                    None,   # Function
+                    None,   # Architect
+                    'In Progress'
+                ]
+            ]
+        }
+        self.insert_data(range, body)
+        self.systemsInProgress.append(system)
