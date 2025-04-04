@@ -498,7 +498,7 @@ class Sheet:
         if self.sheetFunctionality.get(sheet, {}).get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
             if inTransit or amount > 0:
                 logger.debug(f'Checking for existing row for {commodity}')
-                existingValue = self.inTransitCommodities.pop(commodity, None)
+                existingValue = self.inTransitCommodities.get(commodity, None)
                 if existingValue:
                     if inTransit or (not inTransit and existingValue[1].startswith(f"'{sheet}'")):
                         logger.debug('Existing in-transit row found, updating')
@@ -982,7 +982,7 @@ class Sheet:
             return
         
         if clear:
-            logger.debug("Clearing in-transit commodities")
+            logger.debug(f"Clearing in-transit commodities {self.inTransitCommodities}")
             
             rowsToDelete: list = []
             offsets: dict[int, int] = {}
