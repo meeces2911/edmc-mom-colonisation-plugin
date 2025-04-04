@@ -497,7 +497,7 @@ class Sheet:
 
         if self.sheetFunctionality.get(sheet, {}).get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
             if inTransit or amount > 0:
-                logger.debug(f'Checking for existing row for {commodity}')
+                logger.debug(f'Checking for existing row for {commodity} in {self.inTransitCommodities}')
                 existingValue = self.inTransitCommodities.get(commodity, None)
                 if existingValue:
                     if inTransit or (not inTransit and existingValue[1].startswith(f"'{sheet}'")):
@@ -507,6 +507,9 @@ class Sheet:
                         if inTransit:
                             # Buying additional cargo for something thats already in-transit, just update the existing row with the additional value
                             bodyValue[2] += existingValue[0]
+                        else:
+                            # Selling cargo, so this is no longer in transit
+                            self.inTransitCommodities.pop(commodity)
                         update = True
                     else:
                         # We've recorded an in-transit move for one carrier, then dropped it off at the next... err... panic?!
