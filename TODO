@@ -2,3 +2,5 @@
 - Buy orders when unset are not always clearing the table
 - Name not added, or different from spreadsheet (include a space or something) Not populting commander on carrier tab entries. ie 'Death Magnet' vs 'DeathMagnet'
 - What if the in-transit row changes between pickup and delivery (ie, 'fixing up' the spreadsheet) ?
+- Removing hard coding of spreadsheet
+- Add Disable Plugin option
