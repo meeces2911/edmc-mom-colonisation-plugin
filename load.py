@@ -98,7 +98,7 @@ class This:
         self.pluginStatusIcon: tk.Label | None = None
         self.showPluginStatus: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_UI_PLUGIN_STATUS, default=True))
         self.showAssignedCarrier: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_UI_SHOW_CARRIER, default=True))
-        self.featureTrackDelivery: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_FEAT_TRACK_DELIVERY, default=False))
+        self.featureTrackDelivery: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_FEAT_TRACK_DELIVERY, default=True))
         self.featureAssumeCarrierUnloadToSCS: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_FEAT_ASSUME_CARRIER_UNLOAD_SCS, default=True))
 
 
@@ -195,10 +195,7 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
 
     ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row.get(), columnspan=4, padx=PADX, pady=PADY, sticky=tk.EW)
 
-    nb.Checkbutton(
-        frame, text='Delivery Tracking (Opt-in to Delivery tracking. This is currently not supported for all usecases)', variable=this.featureTrackDelivery
-    ).grid(row=row.get(), column=0, padx=PADX, pady=PADY, sticky=tk.W)
-
+    nb.Checkbutton(frame, text='Delivery Tracking', variable=this.featureTrackDelivery).grid(row=row.get(), column=0, padx=PADX, pady=PADY, sticky=tk.W)
     nb.Checkbutton(frame, text='Assume Carrier Buy is for Unloading to SCS', variable=this.featureAssumeCarrierUnloadToSCS).grid(row=row.get(), column=0, padx=PADX, pady=PADY, sticky=tk.W)
 
     # If the dialog is closed without the user clicking ok, make sure we resume the worker
@@ -238,7 +235,7 @@ def clear_saved_settings(parent) -> None:
         # Reset the checkboxes to something sensible
         this.showPluginStatus.set(True)
         this.showAssignedCarrier.set(True)
-        this.featureTrackDelivery.set(False)
+        this.featureTrackDelivery.set(True)
         this.featureAssumeCarrierUnloadToSCS.set(True)
 
 def prefs_changed_cancelled() -> None:
