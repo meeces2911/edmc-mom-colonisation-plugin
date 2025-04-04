@@ -534,7 +534,11 @@ def process_item(item: PushRequest) -> None:
                 this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount)
                 if this.featureAssumeCarrierUnloadToSCS.get():
                     sheetName = this.sheet.lookupRanges[this.sheet.LOOKUP_SCS_SHEET_NAME]
-                    this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount*-1, inTransit=True, system=item.data['System'])
+                    system = item.data['System']
+                    if system in this.sheet.systemsInProgress:
+                        this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount*-1, inTransit=True, system=system)
+                    else:
+                        logger.debug(f'{system} not in list of Systems In Progress, not adding in-transit delivery to SCS sheet')
             case PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE:
                 logger.info('Processing Carrier Buy/Sell Order update')
                 logger.debug(this.killswitches)
@@ -732,7 +736,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             this.cargoCapacity = state['CargoCapacity']
 
             # Add SCS to spreadsheet if missing
-            if this.sheet and not system in this.sheet.systemsInProgress:
+            if this.sheet and not system in this.sheet.systemsInProgress and (station == 'System Colonisation Ship' or station == '$EXT_PANEL_ColonisationShip:#index=1;'):
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_SCS_SYSTEM_ADD, system))
         case 'Undocked':
             this.currentCargo = None
