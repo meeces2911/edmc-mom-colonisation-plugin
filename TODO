@@ -5,4 +5,6 @@
 - Removing hard coding of spreadsheet
 - Add Disable Plugin option
 - When setting Sell Orders, the starting inventory is taken into account, and the Buy Order cell is not cleared
+- Handle timeouts when interacting with the sheet
 - Show popup when plugin update is required
+- Make Carrier Scheduled Jump and Location toggleable per sheet
