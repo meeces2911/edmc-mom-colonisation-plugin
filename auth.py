@@ -33,9 +33,8 @@ plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
 class This:
-    def __init__(self):
-        self.httpres: str | None = None
-        self.access_token: str | None = None
+    httpres: str | None = None
+    access_token: str | None = None
 
 this = This()
 
@@ -238,17 +237,16 @@ class LocalHTTPServer:
     Local HTTP webserver, based of EDMCs LinuxProtocolHandler
     """
 
-    def __init__(self) -> None:        
+    thread: threading.Thread | None = None
+    response: str | None = None
+
+    def __init__(self) -> None:
         self.httpd = HTTPServer(('localhost', 0), HTTPRequestHandler)
         self.redirect = f'http://localhost:{self.httpd.server_port}/auth'
         self.gpickerEndpoint = f'http://localhost:{self.httpd.server_port}/gpicker'
 
         if not os.getenv("EDMC_NO_UI"):
             logger.info(f'Web server listening on {self.redirect} and {self.gpickerEndpoint}')
-
-        self.thread: threading.Thread | None = None
-        self.response: str | None = None
-        
 
     def start(self) -> None:
         """Start the HTTP server thread."""
