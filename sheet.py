@@ -129,9 +129,11 @@ class Sheet:
     
     def _convert_A1_range_to_idx_range(self, a1Str: str, skipHeaderRow: bool = False) -> dict:
         # 'EDMC Plugin Settings'!E1:G4
-        logger.debug('Converting A1 range to index')
+        logger.debug(f'Converting A1 range ({a1Str}) to index')
         splits = a1Str.split('!')
-        sheetName = splits[0][1:-1].replace("''", "'")              # 'Explorer''s Rest' -> Explorer's Rest
+        sheetName = splits[0].replace("''", "'")                    # 'Explorer''s Rest' -> Explorer's Rest
+        if sheetName[0] == "'":
+            sheetName = sheetName[1:-1]
         ranges = splits[1].split(':')
         rangeStart = self._A1_to_index(ranges[0])                   # E1 -> col:4, row:0
         rangeEnd = self._A1_to_index(ranges[1])                     # G4 -> col:6, row:3
@@ -501,7 +503,7 @@ class Sheet:
                 existingValue = self.inTransitCommodities.get(commodity, None)
                 if existingValue:
                     for range in existingValue:
-                        if range.startswith(f"'{sheet}'"):
+                        if range.startswith(f"'{sheet}'") or range.startswith(f"{sheet}"):
                             logger.debug('Existing in-transit row found, updating')
                             # Buying or Selling cargo to the carrier, just update the existing in-transit row
                             if inTransit:
@@ -732,7 +734,7 @@ class Sheet:
             inTransitCargo = self.inTransitCommodities.get(commodity, None)
             if inTransitCargo:
                 for existingRange in inTransitCargo:
-                    if existingRange.startswith(f"'{sheet}'"):
+                    if existingRange.startswith(f"'{sheet}'") or existingRange.startswith(f"{sheet}"):
                         #range = inTransitCargo[1]
                         range = existingRange
                         logger.debug(f'Found, updating {range} instead')

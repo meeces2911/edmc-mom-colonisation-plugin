@@ -4,6 +4,7 @@
 
 ## Fixed
 * Fixed In-Transit items across multiple carriers not being correctly recorded after being dropped off, resulting in duplicate entries
+* Fixed carriers/sheet names _without_ spaces in their names not updating the spreadsheet correctly
 
 ## 1.2.0
 
