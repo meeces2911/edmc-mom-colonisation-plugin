@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.2.2
+
+## Fixed
+* Fixed the fix for In-Transit items across multiple carriers not being correctly recorded. Sorry.
+
 ## 1.2.1
 
 ## Fixed

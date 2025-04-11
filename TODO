@@ -5,3 +5,4 @@
 - Removing hard coding of spreadsheet
 - Add Disable Plugin option
 - When setting Sell Orders, the starting inventory is taken into account, and the Buy Order cell is not cleared
+- Show popup when plugin update is required

@@ -502,27 +502,27 @@ class Sheet:
                 logger.debug(f'Checking for existing row for {commodity} in {self.inTransitCommodities}')
                 existingValue = self.inTransitCommodities.get(commodity, None)
                 if existingValue:
-                    for range in existingValue:
-                        if range.startswith(f"'{sheet}'") or range.startswith(f"{sheet}"):
+                    for existingRange in existingValue:
+                        if existingRange.startswith(f"'{sheet}'") or existingRange.startswith(f"{sheet}"):
                             logger.debug('Existing in-transit row found, updating')
                             # Buying or Selling cargo to the carrier, just update the existing in-transit row
                             if inTransit:
                                 # Buying additional cargo for something thats already in-transit, just update the existing row with the additional value
-                                bodyValue[2] += existingValue[range]
+                                bodyValue[2] += existingValue[existingRange]
                             else:
                                 # Selling cargo, so this is no longer in transit
                                 logger.debug('Removing in-transit range from commodity')
-                                existingValue.pop(range)
+                                existingValue.pop(existingRange)
                                 if len(existingValue) == 0:
                                     logger.debug('No ranges left, removing commodity from in-transit list')
                                     self.inTransitCommodities.pop(commodity)
                             update = True
                             break
-                    else:
-                        # We've recorded an in-transit move for one carrier, then dropped it off at the next... err... panic?!
-                        logger.warning('In-Transit row found, but for a different carrier, ignoring')
-                        # Should we clear the in-transit record ... or just leave it?
-                        # We might just be doing a partial delivery
+                        else:
+                            # We've recorded an in-transit move for one carrier, then dropped it off at the next... err... panic?!
+                            logger.warning('In-Transit row found, but for a different carrier, ignoring')
+                            # Should we clear the in-transit record ... or just leave it?
+                            # We might just be doing a partial delivery
                 else:
                     logger.debug('Not found, creating new one')
 
