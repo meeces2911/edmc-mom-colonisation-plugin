@@ -5,10 +5,15 @@ import json
 import time
 import logging
 import webbrowser
+from collections import defaultdict
 
 import load as plugin
 import auth
 import tkinter as tk
+
+# Import stubs
+import config
+import monitor
 
 MOCK_HTTP_RESPONSES: list[str] = []
 MOCK_HTTP_RESPONSE_CODES: list[int] = []
@@ -62,6 +67,11 @@ def global_mocks(monkeypatch):
     monkeypatch.setattr(auth.Auth, 'auth', lambda *args, **kwargs: print('Auth::auth stubbed, skipping '))
     monkeypatch.setattr(requests.sessions.Session, 'request', lambda *args, **kwargs: MockResponse())
 
+@pytest.fixture(autouse=True)
+def before_test():
+    """Default any settings before the run of each test"""
+    config.config.shutting_down = False
+
 def _add_mocked_http_response(responseBody: str | None, responseCode: int | None):
     # Not particularly great framework, but it works for now...
     if responseBody:
@@ -86,26 +96,36 @@ def test_plugin_start_stop():
     
 
     plugin.plugin_start3("..\\")
+    assert plugin.this.thread
+    assert plugin.this.thread.is_alive()
 
     # Give the plugin a little time to start to avoid mixing the starting and quitting logs
     time.sleep(1)
 
-    assert plugin.this.thread
-    assert plugin.this.thread.is_alive()
-
+    config.config.shutting_down = True
     plugin.plugin_stop()
     assert plugin.this.thread == None
 
-@pytest.mark.timeout(5)
-def test_plugin_initial_startup():
-    pass
-    #plugin.initial_startup()
-    #assert plugin.this.auth
-    #assert plugin.this.sheet
+def test_journal_entry_start_in_space_with_cargo():
+    """Test 'Startup' or 'LoadGame' events"""
+    entry = {'timestamp': '2025-04-11T08:18:27Z', 'event': 'LoadGame', 'FID': '9001', 'Commander': 'Meeces2911', 'Horizons': True, 'Odyssey': True, 'Ship': 'Type9', 'Ship_Localised': 'Type-9 Heavy', 'ShipID': 10, 'ShipName': 'hauler', 'ShipIdent': 'MIKUNN', 'FuelLevel': 64.0, 'FuelCapacity': 64.0, 'GameMode': 'Open', 'Credits': 3620255325, 'Loan': 0, 'language': 'English/UK', 'gameversion': '4.1.1.0', 'build': 'r312744/r0 '}
+    state = {'Cargo': defaultdict(int, {'steel': 720}), 'CargoCapacity': 720}
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station=None, entry=entry, state=state)
+    
+    assert plugin.this.currentCargo == {'steel': 720}
+    assert plugin.this.cargoCapacity == 720
 
-    #assert plugin.this.killswitches
+    # Expecting TYPE_CMDR_UPDATE and TYPE_CARRIER_INTRANSIT_RECALC
+    assert plugin.this.queue.qsize() == 2
 
-def test_clear_auth_token():
-    pass
-    #plugin.this.clearAuthButton = tk.Button()
-    #plugin.clear_token_and_disable_button()
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CMDR_UPDATE
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == None
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_INTRANSIT_RECALC
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == None

@@ -686,7 +686,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
         this.capiMutex.release()
         
     match entry['event']:
-        case 'StartUp':
+        case 'StartUp' | 'LoadGame':
             """
             {
                 'timestamp': '2025-03-01T23:22:53Z',
