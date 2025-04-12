@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.2.3
+
+## Fixed
+* Fix for the fix that fixes the In-Transit ... you get the idea. (This fixes the In-transit checkmark not getting updated correctly)
+
 ## 1.2.2
 
 ## Fixed

@@ -516,6 +516,7 @@ class Sheet:
                                 if len(existingValue) == 0:
                                     logger.debug('No ranges left, removing commodity from in-transit list')
                                     self.inTransitCommodities.pop(commodity)
+                            range = existingRange
                             update = True
                             break
                         else:
