@@ -740,6 +740,8 @@ class Sheet:
                         range = existingRange
                         logger.debug(f'Found, updating {range} instead')
                         update = True
+                        inTransitCargo.pop(existingRange)
+                        break
         
         body = {
             'range': range,

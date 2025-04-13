@@ -4,6 +4,7 @@
 
 ## Fixed
 * Fixed CarrierTradeOrders not using the correct carrier id when updating the spreadsheet
+* Fixed In-Transit cargo being 'remembered' after they'd been dropped off to a SCS ship
 
 ## 1.2.3
 
