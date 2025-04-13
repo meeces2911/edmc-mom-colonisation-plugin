@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.2.4
+
+## Fixed
+* Fixed CarrierTradeOrders not using the correct carrier id when updating the spreadsheet
+
 ## 1.2.3
 
 ## Fixed

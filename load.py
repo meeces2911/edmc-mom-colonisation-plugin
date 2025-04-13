@@ -34,7 +34,7 @@ from auth import Auth, SPREADSHEET_ID
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
-VERSION = '1.2.3'
+VERSION = '1.2.4'
 _CAPI_RESPONSE_TK_EVENT_NAME = '<<CAPIResponse>>'
 
 KILLSWITCH_CMDR_UPDATE = 'cmdr info update'
@@ -841,11 +841,11 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 "CancelTrade": true
             }
             """
-            if this.latestCarrierCallsign and this.sheet and this.latestCarrierCallsign in this.sheet.carrierTabNames.keys():
-                logger.debug(f'Carrier "{this.latestCarrierCallsign}" known, creating queue entry')
-                this.queue.put(PushRequest(cmdr, this.latestCarrierCallsign, PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE, entry))
+            if this.myCarrierCallsign and this.sheet and this.myCarrierCallsign in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{this.myCarrierCallsign}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE, entry))
             else:
-                logger.debug(f'Carrier "{this.latestCarrierCallsign}" not known, skipping market update')
+                logger.debug(f'Carrier "{this.myCarrierCallsign}" not known, skipping market update')
         case 'CarrierJumpRequest' | 'CarrierJumpCancelled':
             """
             {
