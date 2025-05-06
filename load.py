@@ -34,7 +34,7 @@ from auth import Auth, SPREADSHEET_ID
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
-VERSION = '1.2.4'
+VERSION = '1.2.5'
 _CAPI_RESPONSE_TK_EVENT_NAME = '<<CAPIResponse>>'
 
 KILLSWITCH_CMDR_UPDATE = 'cmdr info update'
@@ -741,13 +741,13 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             this.cargoCapacity = state['CargoCapacity']
 
             # Add SCS to spreadsheet if missing
-            if this.sheet and not system in this.sheet.systemsInProgress and (station == 'System Colonisation Ship' or station == '$EXT_PANEL_ColonisationShip:#index=1;'):
+            if this.sheet and not system in this.sheet.systemsInProgress and (station == 'System Colonisation Ship' or station.startswith('$EXT_PANEL_ColonisationShip')):
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_SCS_SYSTEM_ADD, system))
         case 'Undocked':
             this.currentCargo = None
         case 'Cargo':
             # SCS don't do MarketSell, but there are Cargo events, so lets just track what we started with and do a diff
-            if station == 'System Colonisation Ship' or station == '$EXT_PANEL_ColonisationShip:#index=1;':
+            if station == 'System Colonisation Ship' or station.startswith('$EXT_PANEL_ColonisationShip'):
                 data = {
                     'oldCargo': this.currentCargo,
                     'newCargo': state['Cargo']

@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.2.5
+
+### Fixed
+* Changed SCS station name check to cope with new ship names
+
 ## 1.2.4
 
 ## Fixed
