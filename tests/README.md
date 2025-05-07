@@ -10,4 +10,5 @@ To run these tests locally, you should do the following:
 ## Running the tests
 >Make sure you are running these tests from the python virtual environment created during the Prereqs
 * Change directory to `tests` if not already there
+* Change into the python venv `.venv\scripts\Activate.ps1`
 * Then just run pytest `pytest`
