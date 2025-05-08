@@ -1,5 +1,21 @@
 # Change Log
 
+## 1.3.0
+
+### What's Changed
+* Added support for the new colonisation journal entries. This means its a LOT easier to keep the spreadsheet up to date when doing SCS dropoffs and not all CMDRs are using the tracker
+  * `ColonisationBeaconDeployed` When a new Beacon is deployed, an entry is automatically added to the System Info sheet.
+    > **Note:** CMDRs still need to manually fill in the Station/Building type, as that information is not recorded in the journals :(
+  * `ColonisationConstructionDepot` When docked at a System Colonisation Ship:
+    *  For the first time, a check is done to see if the information on the Data sheet has been filled out. If not, this is done automatically
+    * Every 60 seconds (this might change later) a check of the current SCS offload data is done. If any discrepancies are found, then corrections are automatically added.
+  * `ColonisationContribution` Uses this journal entry to determine what has been sold/transferred to the SCS, rather than guessing what cargo is no longer on the ship
+  * `ColonisationSystemClaim` is ignored, as it doesn't actually contain any useful information, sadly.
+  * `ColonisationSystemClaimRelease` same as claim, this is ignored
+
+### Fixed
+* (Finally) Fixed timestamps being entered in the wrong cell if Delivery Tracking was disabled
+
 ## 1.2.5
 
 ### Fixed
@@ -7,23 +23,23 @@
 
 ## 1.2.4
 
-## Fixed
+### Fixed
 * Fixed CarrierTradeOrders not using the correct carrier id when updating the spreadsheet
 * Fixed In-Transit cargo being 'remembered' after they'd been dropped off to a SCS ship
 
 ## 1.2.3
 
-## Fixed
+### Fixed
 * Fix for the fix that fixes the In-Transit ... you get the idea. (This fixes the In-transit checkmark not getting updated correctly)
 
 ## 1.2.2
 
-## Fixed
+### Fixed
 * Fixed the fix for In-Transit items across multiple carriers not being correctly recorded. Sorry.
 
 ## 1.2.1
 
-## Fixed
+### Fixed
 * Fixed In-Transit items across multiple carriers not being correctly recorded after being dropped off, resulting in duplicate entries
 * Fixed carriers/sheet names _without_ spaces in their names not updating the spreadsheet correctly
 
@@ -43,7 +59,7 @@
 * Handle **CarrierDepositFuel** Journal Events - this means that 'dontating' fuel to a carrier now counts as a delivery
 * Automatically add an entry to the System Info sheet, if docking to an Unknwon SCS for the first time
 
-## Fixed
+### Fixed
 * Fixed wrong carrier sheet being updated on carrier jump if you'd docked to another carrier since setting the jump
 * Re-enable early event queuing prior to Google authentication is complete. This means we don't miss out on the start-up events
 * Settings are now saved correctly and should persist between restarts

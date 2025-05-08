@@ -32,6 +32,11 @@ class Sheet:
     LOOKUP_SYSTEMINFO_SHEET_NAME = 'System Info Sheet'
     LOOKUP_CMDR_INFO = 'CMDR Info'
     LOOKUP_SYSTEMS_IN_PROGRESS = 'In Progress Systems'
+    LOOKUP_SCS_PROGRESS_PIVOT = 'SCS Progress Pivot'
+    LOOKUP_SCS_RECONCILE_MUTEX = 'Reconcile Mutex'
+    LOOKUP_SCS_SYSTEMS_WITH_NO_DATA = 'Systems With No Data'
+    LOOKUP_DATA_SYSTEM_TABLE = 'Data System Table Start'
+    LOOKUP_DATA_SYSTEM_TABLE_END = 'Data System Table End Column'
 
     def __init__(self, auth: Auth, session: requests.Session):
         self.auth: Auth = auth
@@ -47,13 +52,11 @@ class Sheet:
         self.commodityNamesFromNice: dict[str, str] = {}
         self.sheetFunctionality: dict[str, dict[str, bool]] = {}
         self.systemsInProgress: list[str] = []
-        
-        
+        self.inTransitCommodities: dict[str, dict[str, int]] = {}
         """
             This ones needs a bit of explaining:
                 [commodity] = [A1range] = amount
         """
-        self.inTransitCommodities: dict[str, dict[str, int]] = {}
 
         if config.shutting_down:
             # If shutdown is called during the intial stages of auth, we won't have been initialised yet
@@ -62,8 +65,9 @@ class Sheet:
         
         self.configSheetName = tk.StringVar(value=config.get_str(CONFIG_SHEET_NAME, default='EDMC Plugin Settings'))
         self.cmdrsAssignedCarrier = tk.StringVar(value=config.get_str(CONFIG_ASSIGNED_CARRIER))
-            
-        self.check_and_authorise_access_to_spreadsheet()
+        
+        if session:
+            self.check_and_authorise_access_to_spreadsheet()
 
     def check_and_authorise_access_to_spreadsheet(self, skipReauth=False) -> any:
         """Checks and (Re)Authorises access to the spreadsheet. Returns the current sheets"""
@@ -115,18 +119,25 @@ class Sheet:
             value = sheet['properties']['sheetId']
             self.sheets[key] = int(value)
 
-    def _A1_to_index(self, colStr: str) -> list[int]:
-        """Converts an A1 range column into a numeric index, starting from A = 0"""
-        colIdx = 0
-        rowStr = ''
-        for char in colStr:
+    def _A1_to_index(self, colStr: str) -> tuple[int, int]:
+        """
+            Converts an A1 range column into a numeric index, starting from A = 0
+            
+            Returns: [col, row]
+        """
+        colIdx: int = 0
+        rowStr: str = ''
+        adjust = 1
+        for char in colStr[::-1]:
             charInt = ord(char)
             if charInt >= 65:  # ord('A') = 65
-                colIdx += charInt - 65
+                colIdx += (charInt - 64) * adjust
+                adjust *= 26
             else:
-                rowStr += char
-        return [colIdx, int(rowStr)-1]
-    
+                rowStr = char + rowStr
+            
+        return (colIdx-1, int(rowStr)-1) if rowStr != '' else (colIdx-1, -1)
+
     def _convert_A1_range_to_idx_range(self, a1Str: str, skipHeaderRow: bool = False) -> dict:
         # 'EDMC Plugin Settings'!E1:G4
         logger.debug(f'Converting A1 range ({a1Str}) to index')
@@ -210,7 +221,7 @@ class Sheet:
 
     def insert_data(self, range: str, body: dict, returnValues: bool = False) -> any:
         """Add/update some data in the spreadsheet"""
-        # POST https://sheets.googleapis.com/v4/spreadsheets/SPREADSHEET_ID/values/Sheet1!A1:E1:append?valueInputOption=VALUE_INPUT_OPTION
+        # POST https://sheets.googleapis.com/v4/spreadsheets/SPREADSHEET_ID/values/Sheet1!A1:E1:append?valueInputOption=USER_ENTERED
         # Append adds new rows to the end of the given range
         base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values/{range}:append?valueInputOption=USER_ENTERED'
         if returnValues:
@@ -722,7 +733,7 @@ class Sheet:
         #    }
             #self.insert_data(range, body)
         
-    def add_to_scs_sheet(self, cmdr: str, system: str, commodity: str, amount: int) -> None:
+    def add_to_scs_sheet(self, cmdr: str, system: str, commodity: str, amount: int, timestamp: str) -> None:
         """Updates the SCS sheet with some cargo"""
         logger.debug('Building SCS Sheet Message')
         sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
@@ -760,13 +771,20 @@ class Sheet:
             body['values'][0].append(True)
 
         if self.sheetFunctionality.get(sheet, {}).get('Timestamp', False):
-            body['values'][0].append(self._get_datetime_string())
+            if not deliveryEnabled:
+                body['values'][0].append(None)    
+            body['values'][0].append(timestamp)
 
         logger.debug(body)
         if not update:
-            self.insert_data(range, body)
+            response = self.insert_data(range, body)
         else:
             response = self.update_data(range, body)
+        
+        if len(response) == 0:
+            raise Exception("Bad response")
+
+        if update or deliveryEnabled:
             # Must be an in-transit, so update the sheet format too
             # Now format the row we just created
             logger.debug('Formatting Delivery cell')
@@ -798,7 +816,7 @@ class Sheet:
                 ]
                 self.update_sheet(sheetUpdates)   
             else:
-                logger.error('No updatedRange found in response')
+                raise Exception('No updatedRange found in response')
 
     def record_plugin_usage(self, cmdr: str, version: str) -> None:
         """Updates the Plugin sheet with usage info"""
@@ -1070,7 +1088,7 @@ class Sheet:
 
         logger.debug(f'Commodities in transit: {self.inTransitCommodities}')
 
-    def add_in_progress_scs_system(self, system: str) -> None:
+    def add_in_progress_scs_system(self, system: str, cmdr: str = None) -> None:
         """Adds a new system to the System Info sheet"""
         logger.debug('Building New SCS System Message')
         sheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
@@ -1097,10 +1115,157 @@ class Sheet:
                     system,
                     None,   # Build type
                     None,   # Function
-                    None,   # Architect
+                    cmdr,   # Architect
                     'In Progress'
                 ]
             ]
         }
         self.insert_data(range, body)
         self.systemsInProgress.append(system)
+    
+    def reconcile_scs_entries(self, cmdr: str, system: str, scsResourceList: list, timestamp: str):
+        """Adds any 'correction' entries to the SCS Offload table to make sure its in sync with the game"""
+        logger.debug(f'Starting SCS Offload reconcile for {system}')
+        # Add some sort of mutex/indicator to the sheet that 'i'm' doing the reconcile
+        gsRange = self.lookupRanges[self.LOOKUP_SCS_RECONCILE_MUTEX] or "'SCS Offload'!X1"
+        mutexData = self.fetch_data(gsRange)
+        logger.debug(mutexData)
+
+        lockedByCmdr = mutexData.get('values')
+        if lockedByCmdr:
+            logger.info(f"SCS Reconcile currently in progress by '{lockedByCmdr[0][0]}', skipping")
+            return
+        else:
+            logger.info('Starting SCS Reconcile')
+            mutexData['values'] = [
+                [cmdr]
+            ]
+            self.update_data(gsRange, mutexData)
+
+        try:
+            # Get the current values
+            sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
+            gsRange = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_SCS_PROGRESS_PIVOT] or 'W4:BY'}"
+            data  = self.fetch_data(gsRange)
+            logger.debug(data)
+            
+            if len(data) == 0:
+                raise Exception("Invalid Data returned for SCS Pivot table")
+
+            # The data the comes back to us is from a pivot table
+            # So the first row will be the commodity (nice) names
+            # then a 'blank' row with just zeros
+            # and then a row with the first column being the system name
+
+            sheetValues: dict[str, int] = {}
+            commodityNames = []
+            for row in data['values']:
+                # skip blank rows
+                if len(row) == 0 or row[0] == "":
+                    continue
+                if row[0] == 'Delivered To':
+                    commodityNames = row
+                    continue
+                # If not our system, then we also don't care
+                if row[0] != system:
+                    continue
+
+                for colIdx in range(1, len(row)):
+                    commodityName = commodityNames[colIdx]
+                    commodityDemand = row[colIdx]
+                    # Skip empty commodities
+                    if commodityDemand == "":
+                        continue
+                    sheetValues[self.dropdown_to_commodity_type_name(commodityName)] = int(commodityDemand)
+
+                # Job done
+                break
+            logger.debug(sheetValues)
+
+            includeTS: bool = self.sheetFunctionality.get(sheet, {}).get('Timestamp', False)
+
+            corrections: list = []
+            for resource in scsResourceList:
+                commodityName = resource['Name'][1:-6]  # Strip the $ and _name bits off. $aluminium_name -> aliminium
+                commodityDemand = int(resource['RequiredAmount']) - int(resource['ProvidedAmount'])
+                sheetDemand = sheetValues.get(commodityName, -1)
+                logger.debug(f'Checking {commodityName}: {commodityDemand} vs {sheetDemand}')
+
+                # Commodity still required by the sheet
+                if sheetDemand != commodityDemand:
+                    entry = [commodityName, system, sheetDemand - commodityDemand, True]
+                    if includeTS:
+                        entry.append(timestamp)
+                    corrections.append(entry)
+
+            logger.debug(f'Corrections required: {corrections}')
+
+            sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
+            gsRange = f"'{sheet}'!A:A"
+            body = {
+                'range': gsRange,
+                'majorDimension': 'ROWS',
+                'values': [
+                    corrections
+                ]
+            }
+            self.insert_data(gsRange, body)
+
+        finally:
+            # Then, finally, remove the mutex
+            mutexData['values'][0] = [""]
+            self.update_data(mutexData['range'], mutexData)
+
+    def populate_scs_data(self, system: str, scsResourceList: list):
+        """Automatically adds the SCS requirements to the Data sheet"""
+        logger.debug('Building New SCS Data Message')
+
+        # Get list of current systems/SCS from the Data sheet
+        systemRange = self.lookupRanges[self.LOOKUP_DATA_SYSTEM_TABLE] or 'Data!A59:A'
+        idxDict = self._convert_A1_range_to_idx_range(systemRange)
+        startRow = idxDict['startRowIndex']
+        endColumn = self.lookupRanges[self.LOOKUP_DATA_SYSTEM_TABLE_END] or 'BD'
+        endColumnNum = self._A1_to_index(endColumn)[0]
+        logger.critical(endColumnNum)
+        commodityRange = systemRange.split(':')[0] + ':' + (endColumn) + str(startRow)
+
+        data = self.fetch_data_bulk([systemRange, commodityRange])
+        logger.debug(data)
+
+        if len(data) == 0 or len(data['valueRanges']) < 2:
+            raise Exception("Invalid Data returned for Data Systems table")
+
+        # Find which row are we actually interested in
+        count: int = 0
+        found: bool = False
+        for row in data['valueRanges'][1]['values']:
+            count += 1
+            if row[0] == system:
+                logger.debug(f'System {system} found on row {startRow+count}')
+                found = True
+                break
+
+        if not found:
+            raise Exception(f'System {system} not found in Data table')
+        
+        commodityOrderList = data['valueRanges'][0]['values'][0]
+        dataRowEntry: list[int] = [None] * (endColumnNum+1)
+        for resource in scsResourceList:
+            requiredAmount = int(resource['RequiredAmount'])
+            commodityName = resource['Name'][1:-6]  # Strip the $ and _name bits off. $aluminium_name -> aliminium
+            commodity = self.commodity_type_name_to_dropdown(commodityName)
+            logger.debug(f'Adding {commodity} at position {commodityOrderList.index(commodity)} for {requiredAmount}')
+            dataRowEntry[commodityOrderList.index(commodity)] = requiredAmount
+        logger.debug(dataRowEntry)
+
+        # THe assumption here is that the System Data table will always start in column A
+        gsRange = systemRange.split('!')[0] + '!' + 'A' + str(startRow+count) + ':' + endColumn + str(startRow+count)
+        body = {
+            'range': gsRange,
+            'majorDimension': 'ROWS',
+            'values': [
+                dataRowEntry
+            ]
+        }
+        self.update_data(gsRange, body)
+

@@ -1,0 +1,41 @@
+name: Test
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  run-tests-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+      - name: Create venv
+        run: |
+          cd tests
+          python -m venv .venv
+      - name: Install dependencies
+        run: |
+          cd tests
+          source .venv/bin/activate
+          pip install -r requirements.txt
+      - name: Run Tests
+        run: |
+          cd tests
+          source .venv/bin/activate
+          pytest --junit-xml=report.xml
+      - name: Publish Results
+        uses: dorny/test-reporter@v2
+        if: success() || failure()
+        with:
+          name: PyTest Results
+          path: tests/report.xml
+          reporter: jest-junit
+      

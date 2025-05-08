@@ -34,7 +34,7 @@ from auth import Auth, SPREADSHEET_ID
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
-VERSION = '1.2.5'
+VERSION = '1.3.0'
 _CAPI_RESPONSE_TK_EVENT_NAME = '<<CAPIResponse>>'
 
 KILLSWITCH_CMDR_UPDATE = 'cmdr info update'
@@ -46,6 +46,9 @@ KILLSWITCH_SCS_SELL = 'scs sell commodity'
 KILLSWITCH_CMDR_BUYSELL = 'cmdr buysell commodity'
 KILLSWITCH_CARRIER_TRANSFER = 'carrier transfer'
 KILLSWITCH_CARRIER_RECONCILE = 'carrier reconcile'
+KILLSWITCH_SCS_RECONCILE = 'scs reconcile'
+KILLSWITCH_SCS_RECONCILE_DELAY = 'scs reconcile delay in seconds'
+KILLSWITCH_SCS_DATA_POPULATE = 'scs data populate'
 
 CONFIG_SHEET_NAME = 'mom_config_sheet_name'
 CONFIG_ASSIGNED_CARRIER = 'mom_assigned_carrier'
@@ -77,11 +80,12 @@ class This:
         self.sheet: Sheet | None = None
         self.configSheetName: tk.StringVar = tk.StringVar(value=config.get_str(CONFIG_SHEET_NAME, default='EDMC Plugin Settings'))
 
-        self.currentCargo: dict | None = None
         self.latestCarrierCallsign: str | None = None
         self.myCarrierCallsign: str | None = None
         self.cargoCapacity: int = 0
         self.cmdrsAssignedCarrier: tk.StringVar = tk.StringVar(value=config.get_str(CONFIG_ASSIGNED_CARRIER))
+        self.nextSCSReconcileTime: int = int(time.time())
+        self.dataPopulatedForSystems: list[str] = []
 
         self.clearAuthButton: tk.Button | None = None
         self.pauseWork: bool = False
@@ -100,7 +104,6 @@ class This:
         self.showAssignedCarrier: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_UI_SHOW_CARRIER, default=True))
         self.featureTrackDelivery: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_FEAT_TRACK_DELIVERY, default=True))
         self.featureAssumeCarrierUnloadToSCS: tk.BooleanVar = tk.BooleanVar(value=config.get_bool(CONFIG_FEAT_ASSUME_CARRIER_UNLOAD_SCS, default=True))
-
 
     def __del__(self):
         if self.requests_session:
@@ -123,6 +126,8 @@ class PushRequest:
     TYPE_CMDR_BUY: int = 11
     TYPE_CARRIER_INTRANSIT_RECALC: int = 12
     TYPE_SCS_SYSTEM_ADD: int = 13
+    TYPE_SCS_PROGRESS_UPDATE: int = 14
+    TYPE_SCS_DATA_POPULATE: int = 15
 
     def __init__(self, cmdr, station: str, reqType: int, data: dict):
         self.cmdr = cmdr
@@ -564,7 +569,11 @@ def process_item(item: PushRequest) -> None:
                 if this.killswitches.get(KILLSWITCH_SCS_SELL, 'true') != 'true':
                     logger.warning('DISABLED by killswitch, ignoring')
                     return
-                process_scs_market_updates(item.cmdr, item.station, item.data)
+                timestamp = item.data['timestamp']
+                for transfer in item.data['Contributions']:
+                    commodity = transfer['Name'][1:-6].lower()  # Convert $<name>_name; to just <name>
+                    amount = int(transfer['Amount'])
+                    this.sheet.add_to_scs_sheet(item.cmdr, item.station, commodity, amount, timestamp)
             case PushRequest.TYPE_CMDR_UPDATE:
                 logger.info('Processing CMDR Update')
                 if this.killswitches.get(KILLSWITCH_CMDR_UPDATE, 'true') != 'true':
@@ -615,31 +624,26 @@ def process_item(item: PushRequest) -> None:
                 this.sheet.recalculate_in_transit(sheetName, item.cmdr, clear=resetCargo)
             case PushRequest.TYPE_SCS_SYSTEM_ADD:
                 logger.info('Processing SCS System Add request')
-                this.sheet.add_in_progress_scs_system(item.data)
+                # Keep in mind 'station' here is actually system ;)
+                if item.data['event'] == 'ColonisationBeaconDeployed':
+                    cmdr = item.cmdr
+                this.sheet.add_in_progress_scs_system(item.station, cmdr=cmdr)
+            case PushRequest.TYPE_SCS_PROGRESS_UPDATE:
+                logger.info('Processing SCS Progress update')
+                if this.killswitches.get(KILLSWITCH_SCS_RECONCILE, 'true') != 'true':
+                    logger.warning('DISABLED by killswitch, ignoring')
+                    return
+                this.sheet.reconcile_scs_entries(item.cmdr, item.station, item.data['ResourcesRequired'], item.data['timestamp'])
+            case PushRequest.TYPE_SCS_DATA_POPULATE:
+                logger.info('Processing SCS Data Populate update')
+                if this.killswitches.get(KILLSWITCH_SCS_DATA_POPULATE, 'true') != 'true':
+                    logger.warning('DISABLED by killswitch, ignoring')
+                    return
+                this.sheet.populate_scs_data(item.station, item.data['ResourcesRequired'])
             case _:
                 raise "Unknown PushRequest"
     except Exception:
         logger.error(traceback.format_exc())
-
-def process_scs_market_updates(cmdr: str, station: str, data: dict) -> None:
-    """Because SCS transfers don't provide the same journal info, we'll have to get a bit more creative"""
-    # Its most likely that the current cargo will be empty, but that might not be the case
-    for cargoItem in data['oldCargo']:
-        logger.debug(f"Checking for difference in {cargoItem}")
-        if not cargoItem in data['newCargo']:
-            logger.debug('All Transferred')
-            amount = int(data['oldCargo'][cargoItem])
-            this.sheet.add_to_scs_sheet(cmdr, station, cargoItem, amount)
-        else:
-            logger.debug('Partial transfer (or none)')
-            oldAmount = int(data['oldCargo'][cargoItem])
-            newAmount = int(data['newCargo'][cargoItem])
-            if oldAmount == newAmount:
-                # Skip, nothing was actually transferred
-                logger.debug('none, skipping')
-                continue
-            else:
-                this.sheet.add_to_scs_sheet(cmdr, station, cargoItem, oldAmount - newAmount)    # Yes, this is backwards, but we want a positive amount
 
 def process_carrier_transfer(sheetName: str, cmdr: str, data:dict) -> None:
     """Handle direct carrier transfers, so totals still line up"""
@@ -686,7 +690,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
         this.capiMutex.release()
         
     match entry['event']:
-        case 'StartUp':
+        case 'StartUp' | 'LoadGame':
             """
             {
                 'timestamp': '2025-03-01T23:22:53Z',
@@ -706,7 +710,6 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 logger.info('StartUp: Flying in normal space')
             else:
                 logger.info(f'StartUp: Docked at {station}')
-            this.currentCargo = state['Cargo']
             this.cargoCapacity = state['CargoCapacity']
             this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_UPDATE, None))
 
@@ -727,9 +730,6 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
         case 'FSDJump':
             logger.info(f'FSDJump: Arrived In system {system}')
         case 'Docked':
-            # Keep track of current cargo
-            this.currentCargo = state['Cargo']
-            
             # Update the carrier location
             if this.sheet and station in this.sheet.carrierTabNames.keys():
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_LOC_UPDATE, system))
@@ -742,9 +742,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
 
             # Add SCS to spreadsheet if missing
             if this.sheet and not system in this.sheet.systemsInProgress and (station == 'System Colonisation Ship' or station.startswith('$EXT_PANEL_ColonisationShip')):
-                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_SCS_SYSTEM_ADD, system))
-        case 'Undocked':
-            this.currentCargo = None
+                this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_SYSTEM_ADD, entry))
         case 'Cargo':
             # SCS don't do MarketSell, but there are Cargo events, so lets just track what we started with and do a diff
             if station == 'System Colonisation Ship' or station.startswith('$EXT_PANEL_ColonisationShip'):
@@ -1111,6 +1109,199 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                     'Count': int(entry['Amount'])
                 }
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, sellEntry))
+        case 'ColonisationConstructionDepot':
+            """
+            {
+                'timestamp': '2025-04-13T04:17:39Z',
+                'event': 'ColonisationConstructionDepot',
+                'MarketID': 3956667650,
+                'ConstructionProgress': 0.0,
+                'ConstructionComplete': False,
+                'ConstructionFailed': False,
+                'ResourcesRequired': [{
+                        'Name': '$aluminium_name;',
+                        'Name_Localised': 'Aluminium',
+                        'RequiredAmount': 510,
+                        'ProvidedAmount': 0,
+                        'Payment': 3239
+                    }, {
+                        'Name': '$ceramiccomposites_name;',
+                        'Name_Localised': 'Ceramic Composites',
+                        'RequiredAmount': 515,
+                        'ProvidedAmount': 0,
+                        'Payment': 724
+                    }, {
+                        'Name': '$cmmcomposite_name;',
+                        'Name_Localised': 'CMM Composite',
+                        'RequiredAmount': 4319,
+                        'ProvidedAmount': 0,
+                        'Payment': 6788
+                    }, {
+                        'Name': '$computercomponents_name;',
+                        'Name_Localised': 'Computer Components',
+                        'RequiredAmount': 61,
+                        'ProvidedAmount': 0,
+                        'Payment': 1112
+                    }, {
+                        'Name': '$copper_name;',
+                        'Name_Localised': 'Copper',
+                        'RequiredAmount': 247,
+                        'ProvidedAmount': 0,
+                        'Payment': 1050
+                    }, {
+                        'Name': '$foodcartridges_name;',
+                        'Name_Localised': 'Food Cartridges',
+                        'RequiredAmount': 96,
+                        'ProvidedAmount': 0,
+                        'Payment': 673
+                    }, {
+                        'Name': '$fruitandvegetables_name;',
+                        'Name_Localised': 'Fruit and Vegetables',
+                        'RequiredAmount': 52,
+                        'ProvidedAmount': 0,
+                        'Payment': 865
+                    }, {
+                        'Name': '$insulatingmembrane_name;',
+                        'Name_Localised': 'Insulating Membrane',
+                        'RequiredAmount': 353,
+                        'ProvidedAmount': 0,
+                        'Payment': 11788
+                    }, {
+                        'Name': '$liquidoxygen_name;',
+                        'Name_Localised': 'Liquid oxygen',
+                        'RequiredAmount': 1745,
+                        'ProvidedAmount': 0,
+                        'Payment': 2260
+                    }, {
+                        'Name': '$medicaldiagnosticequipment_name;',
+                        'Name_Localised': 'Medical Diagnostic Equipment',
+                        'RequiredAmount': 12,
+                        'ProvidedAmount': 0,
+                        'Payment': 3609
+                    }, {
+                        'Name': '$nonlethalweapons_name;',
+                        'Name_Localised': 'Non-Lethal Weapons',
+                        'RequiredAmount': 13,
+                        'ProvidedAmount': 0,
+                        'Payment': 2503
+                    }, {
+                        'Name': '$polymers_name;',
+                        'Name_Localised': 'Polymers',
+                        'RequiredAmount': 517,
+                        'ProvidedAmount': 0,
+                        'Payment': 682
+                    }, {
+                        'Name': '$powergenerators_name;',
+                        'Name_Localised': 'Power Generators',
+                        'RequiredAmount': 19,
+                        'ProvidedAmount': 0,
+                        'Payment': 3072
+                    }, {
+                        'Name': '$semiconductors_name;',
+                        'Name_Localised': 'Semiconductors',
+                        'RequiredAmount': 67,
+                        'ProvidedAmount': 0,
+                        'Payment': 1526
+                    }, {
+                        'Name': '$steel_name;',
+                        'Name_Localised': 'Steel',
+                        'RequiredAmount': 6749,
+                        'ProvidedAmount': 0,
+                        'Payment': 5057
+                    }, {
+                        'Name': '$superconductors_name;',
+                        'Name_Localised': 'Superconductors',
+                        'RequiredAmount': 113,
+                        'ProvidedAmount': 0,
+                        'Payment': 7657
+                    }, {
+                        'Name': '$titanium_name;',
+                        'Name_Localised': 'Titanium',
+                        'RequiredAmount': 5415,
+                        'ProvidedAmount': 0,
+                        'Payment': 5360
+                    }, {
+                        'Name': '$water_name;',
+                        'Name_Localised': 'Water',
+                        'RequiredAmount': 709,
+                        'ProvidedAmount': 0,
+                        'Payment': 662
+                    }, {
+                        'Name': '$waterpurifiers_name;',
+                        'Name_Localised': 'Water Purifiers',
+                        'RequiredAmount': 38,
+                        'ProvidedAmount': 0,
+                        'Payment': 849
+                    }
+                ]
+            }
+            """
+            if this.sheet and system in this.sheet.systemsInProgress:
+                # This journal entry happens every 15 seconds... so lets just to 1 a minute and go from there
+                if this.nextSCSReconcileTime > time.time():
+                    logger.debug(f'SCS in known system {system}, but update too recent, skipping')
+                    return
+                
+                logger.debug(f'SCS in known system {system}, creating queue entry')
+                this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_PROGRESS_UPDATE, entry))
+                if not system in this.dataPopulatedForSystems:
+                    this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_DATA_POPULATE, entry))
+                    this.dataPopulatedForSystems.append(system)
+                this.nextSCSReconcileTime = int(time.time()) + int(this.killswitches[KILLSWITCH_SCS_RECONCILE_DELAY])
+        case 'ColonisationContribution':
+            """
+            {
+                'timestamp': '2025-04-13T08:36:25Z',
+                'event': 'ColonisationContribution',
+                'MarketID': 3956737026,
+                'Contributions': [{
+                        'Name': '$Aluminium_name;',
+                        'Name_Localised': 'Aluminium',
+                        'Amount': 102
+                    }, {
+                        'Name': '$CeramicComposites_name;',
+                        'Name_Localised': 'Ceramic Composites',
+                        'Amount': 503
+                    }, {
+                        'Name': '$ComputerComponents_name;',
+                        'Name_Localised': 'Computer Components',
+                        'Amount': 52
+                    }, {
+                        'Name': '$FoodCartridges_name;',
+                        'Name_Localised': 'Food Cartridges',
+                        'Amount': 20
+                    }, {
+                        'Name': '$MedicalDiagnosticEquipment_name;',
+                        'Name_Localised': 'Medical Diagnostic Equipment',
+                        'Amount': 13
+                    }, {
+                        'Name': '$NonLethalWeapons_name;',
+                        'Name_Localised': 'Non-Lethal Weapons',
+                        'Amount': 11
+                    }, {
+                        'Name': '$PowerGenerators_name;',
+                        'Name_Localised': 'Power Generators',
+                        'Amount': 17
+                    }, {
+                        'Name': '$WaterPurifiers_name;',
+                        'Name_Localised': 'Water Purifiers',
+                        'Amount': 34
+                    }
+                ]
+            }
+            """
+            if this.sheet and system in this.sheet.systemsInProgress:
+                logger.debug(f'SCS in known system {system}, creating queue entry')
+                this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_SELL, entry))
+        case 'ColonisationBeaconDeployed':
+            """
+            {
+                "timestamp": "2025-04-14T06:47:06Z",
+                "event": "ColonisationBeaconDeployed"
+            }
+            """
+            logger.debug('Ccreating queue entry')
+            this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_SYSTEM_ADD, entry))
 
 def cmdr_data(data, is_beta):
     if data.source_host == SERVER_LIVE:

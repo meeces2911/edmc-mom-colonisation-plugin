@@ -14,8 +14,11 @@ This [EDMC](https://github.com/EDCD/EDMarketConnector) plugin is designed to hel
 * Automatically adds an entry to the relevant carrier sheet when buying or selling something from/to the carrier
 * Automatically adds an entry to the SCS Offload sheet when 'selling' cargo the the System Colonisation Ship
 * Automatically keeps CMDR Cargo capacity on the System Info tab up to date
-* [1.2.0] (**BETA**) Automatically adds an entry to your the selected carrier's sheet when buying a commodity
+* [1.2.0] () Automatically adds an entry to your the selected carrier's sheet when buying a commodity
 * [1.2.0] Automaticlaly updates the System Info sheet when docking
+* [1.3.0] Automatically adds correction entries to the SCS Offload sheet when docked to the SCS to keep the sheet closer insync with whats happening in game
+* [1.3.0] Automatically adds an entry to the System Info sheet when deploying a Beacon
+* [1.3.0] Automatically updates the Data sheet when docking to a SCS for the first time
 
 #### General
 * [1.2.0] (**WIP**) Plugin Widgets
