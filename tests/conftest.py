@@ -44,6 +44,10 @@ class StubConfig:
         return default
     
     def get_bool(key: str, default: bool = False):
+        print(f'StubConfig::get_bool for {key}')
+        if key == 'mom_feature_track_delivery':
+            # For now, just return true, and control this via the sheet features
+            return True
         return default
     
     def get_int(key: str, default: int = 0):
@@ -124,8 +128,8 @@ class StubVar:
     def set(self, val):
         print(f'Variable SET called with {val}')
         self._var = val
-    def get(self):
-        print('Varbale GET called')
+    def get(self, *args, **kwargs):
+        print(f'Varbale GET called with {args} or {kwargs}')
         return self._var
 
 class StubTTK:

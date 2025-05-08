@@ -9,10 +9,12 @@
   * `ColonisationConstructionDepot` When docked at a System Colonisation Ship:
     *  For the first time, a check is done to see if the information on the Data sheet has been filled out. If not, this is done automatically
     * Every 60 seconds (this might change later) a check of the current SCS offload data is done. If any discrepancies are found, then corrections are automatically added.
-  * `ColonisationContribution` TODO
+  * `ColonisationContribution` Uses this journal entry to determine what has been sold/transferred to the SCS, rather than guessing what cargo is no longer on the ship
   * `ColonisationSystemClaim` is ignored, as it doesn't actually contain any useful information, sadly.
   * `ColonisationSystemClaimRelease` same as claim, this is ignored
 
+### Fixed
+* (Finally) Fixed timestamps being entered in the wrong cell if Delivery Tracking was disabled
 
 ## 1.2.5
 

@@ -771,13 +771,20 @@ class Sheet:
             body['values'][0].append(True)
 
         if self.sheetFunctionality.get(sheet, {}).get('Timestamp', False):
+            if not deliveryEnabled:
+                body['values'][0].append(None)    
             body['values'][0].append(timestamp)
 
         logger.debug(body)
         if not update:
-            self.insert_data(range, body)
+            response = self.insert_data(range, body)
         else:
             response = self.update_data(range, body)
+        
+        if len(response) == 0:
+            raise Exception("Bad response")
+
+        if update or deliveryEnabled:
             # Must be an in-transit, so update the sheet format too
             # Now format the row we just created
             logger.debug('Formatting Delivery cell')
@@ -809,7 +816,7 @@ class Sheet:
                 ]
                 self.update_sheet(sheetUpdates)   
             else:
-                logger.error('No updatedRange found in response')
+                raise Exception('No updatedRange found in response')
 
     def record_plugin_usage(self, cmdr: str, version: str) -> None:
         """Updates the Plugin sheet with usage info"""
