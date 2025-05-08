@@ -30,7 +30,7 @@ jobs:
       - name: Split out Changelog
         id: split-out-changelog
         run: |
-         cat CHANGELOG.md | grep -ozP '(?sU)(.+## 1\.1\.1.+)## \d' | head -n -1 > Partial-CHANGELOG
+         cat CHANGELOG.md | grep -ozP '(?sU)(.+## \d\.\d\.\d.+)## \d' | head -n -1 > Partial-CHANGELOG
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
