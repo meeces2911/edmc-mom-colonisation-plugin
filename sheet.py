@@ -1192,7 +1192,7 @@ class Sheet:
                 logger.debug(f'Checking {commodityName}: {commodityDemand} vs {sheetDemand}')
 
                 # Commodity still required by the sheet
-                if sheetDemand != commodityDemand:
+                if sheetDemand > 0 and sheetDemand != commodityDemand:
                     entry = [commodityName, system, sheetDemand - commodityDemand, True]
                     if includeTS:
                         entry.append(timestamp)
