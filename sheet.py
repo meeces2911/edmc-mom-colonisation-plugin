@@ -1190,8 +1190,9 @@ class Sheet:
             corrections: list = []
             for resource in scsResourceList:
                 commodityName = resource['Name'][1:-6]  # Strip the $ and _name bits off. $aluminium_name -> aliminium
-                commodityDemand = int(resource['RequiredAmount']) - int(resource['ProvidedAmount'])
-                sheetDemand = sheetValues.get(commodityName, -1)
+                commodityRequired = int(resource['RequiredAmount'])
+                commodityDemand = commodityRequired - int(resource['ProvidedAmount'])
+                sheetDemand = commodityRequired - sheetValues.get(commodityName, commodityRequired)
                 logger.debug(f'Checking {commodityName}: {commodityDemand} vs {sheetDemand}')
 
                 # Commodity still required by the sheet
@@ -1208,9 +1209,7 @@ class Sheet:
             body = {
                 'range': gsRange,
                 'majorDimension': 'ROWS',
-                'values': [
-                    corrections
-                ]
+                'values': corrections
             }
             self.insert_data(gsRange, body)
 
