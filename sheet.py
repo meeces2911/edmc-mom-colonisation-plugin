@@ -1131,8 +1131,11 @@ class Sheet:
         mutexData = self.fetch_data(gsRange)
         logger.debug(mutexData)
 
+        if len(mutexData) == 0:
+            raise Exception('Error getting mutex data')
+
         lockedByCmdr = mutexData.get('values')
-        if lockedByCmdr:
+        if lockedByCmdr and lockedByCmdr[0][0] != cmdr:
             logger.info(f"SCS Reconcile currently in progress by '{lockedByCmdr[0][0]}', skipping")
             return
         else:
