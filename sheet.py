@@ -1193,7 +1193,7 @@ class Sheet:
 
                 # Commodity still required by the sheet
                 if sheetDemand > 0 and sheetDemand != commodityDemand:
-                    entry = [commodityName, system, sheetDemand - commodityDemand, True]
+                    entry = [self.commodity_type_name_to_dropdown(commodityName), system, sheetDemand - commodityDemand, True]
                     if includeTS:
                         entry.append(timestamp)
                     corrections.append(entry)
