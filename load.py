@@ -743,19 +743,6 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             # Add SCS to spreadsheet if missing
             if this.sheet and not system in this.sheet.systemsInProgress and (station == 'System Colonisation Ship' or station.startswith('$EXT_PANEL_ColonisationShip')):
                 this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_SYSTEM_ADD, entry))
-        case 'Cargo':
-            # SCS don't do MarketSell, but there are Cargo events, so lets just track what we started with and do a diff
-            if station == 'System Colonisation Ship' or station.startswith('$EXT_PANEL_ColonisationShip'):
-                data = {
-                    'oldCargo': this.currentCargo,
-                    'newCargo': state['Cargo']
-                }
-                this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_SELL, data))
-                this.currentCargo = state['Cargo']
-            
-            # No more cago, lets make sure any in-transit stuff we might have been tracking is cleared
-            if int(entry.get('Count', 0)) == 0:
-                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))
         case 'Market':
             # Actual market data is in the market.json file
             if this.sheet and station in this.sheet.carrierTabNames.keys():
