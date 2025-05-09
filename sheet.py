@@ -1227,7 +1227,7 @@ class Sheet:
         endColumn = self.lookupRanges[self.LOOKUP_DATA_SYSTEM_TABLE_END] or 'BD'
         endColumnNum = self._A1_to_index(endColumn)[0]
         logger.critical(endColumnNum)
-        commodityRange = systemRange.split(':')[0] + ':' + (endColumn) + str(startRow)
+        commodityRange = systemRange.split(':')[0] + ':' + endColumn + str(startRow+1)  # Data!A59 + : + BD + 59
 
         data = self.fetch_data_bulk([systemRange, commodityRange])
         logger.debug(data)
@@ -1238,7 +1238,7 @@ class Sheet:
         # Find which row are we actually interested in
         count: int = 0
         found: bool = False
-        for row in data['valueRanges'][1]['values']:
+        for row in data['valueRanges'][0]['values']:
             count += 1
             if row[0] == system:
                 logger.debug(f'System {system} found on row {startRow+count}')
@@ -1248,7 +1248,7 @@ class Sheet:
         if not found:
             raise Exception(f'System {system} not found in Data table')
         
-        commodityOrderList = data['valueRanges'][0]['values'][0]
+        commodityOrderList = data['valueRanges'][1]['values'][0]
         dataRowEntry: list[int] = [None] * (endColumnNum+1)
         for resource in scsResourceList:
             requiredAmount = int(resource['RequiredAmount'])
