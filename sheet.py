@@ -38,6 +38,8 @@ class Sheet:
     LOOKUP_DATA_SYSTEM_TABLE = 'Data System Table Start'
     LOOKUP_DATA_SYSTEM_TABLE_END = 'Data System Table End Column'
 
+    MAX_ATTEMPTS = 5
+
     def __init__(self, auth: Auth, session: requests.Session):
         self.auth: Auth = auth
         self.requests_session: requests.Session = session
@@ -180,8 +182,17 @@ class Sheet:
         logger.debug(f'Sending request to GET {base_url}')
         try:
             token_refresh_attempted = False
+            attempt = 1
             while True:
-                res = self.requests_session.get(base_url, timeout=10)
+                try:
+                    res = self.requests_session.get(base_url, timeout=10)
+                except requests.exceptions.Timeout:
+                    logger.error(f'Timeout on attempt {attempt}')
+                    if attempt <= self.MAX_ATTEMPTS:
+                        logger.info('retrying')
+                        attempt += 1
+                        continue
+                    logger.error('Too many errors, giving up')
                 if res.status_code == requests.codes.ok:
                     return res.json()
                 elif res.status_code == requests.codes.unauthorized:
@@ -205,8 +216,17 @@ class Sheet:
         logger.debug(f'Sending request to GET {base_url}')
         try:
             token_refresh_attempted = False
+            attempt = 1
             while True:
-                res = self.requests_session.get(base_url, timeout=10)
+                try:
+                    res = self.requests_session.get(base_url, timeout=10)
+                except requests.exceptions.Timeout:
+                    logger.error(f'Timeout on attempt {attempt}')
+                    if attempt <= self.MAX_ATTEMPTS:
+                        logger.info('retrying')
+                        attempt += 1
+                        continue
+                    logger.error('Too many errors, giving up')
                 if res.status_code == requests.codes.ok:
                     return res.json()
                 elif res.status_code == requests.codes.unauthorized:
@@ -237,10 +257,19 @@ class Sheet:
         logger.debug(json.dumps(body))
         
         token_refresh_attempted = False
+        attempt = 1
         while True:
             logger.debug('sending request...')
             logger.debug(self.requests_session.headers)
-            res = self.requests_session.post(base_url, json=body, timeout=10)
+            try:
+                res = self.requests_session.post(base_url, json=body, timeout=10)
+            except requests.exceptions.Timeout:
+                logger.error(f'Timeout on attempt {attempt}')
+                if attempt <= self.MAX_ATTEMPTS:
+                    logger.info('retrying')
+                    attempt += 1
+                    continue
+                logger.error('Too many errors, giving up')
             logger.debug(f'{res}{res.json()}')
             if res.status_code == requests.codes.ok:
                 return res.json()
@@ -265,10 +294,19 @@ class Sheet:
         logger.debug(json.dumps(body))
 
         token_refresh_attempted = False
+        attempt = 1
         while True:
             logger.debug('sending request...')
             logger.debug(self.requests_session.headers)
-            res = self.requests_session.put(base_url, json=body, timeout=10)
+            try:
+                res = self.requests_session.put(base_url, json=body, timeout=10)
+            except requests.exceptions.Timeout:
+                logger.error(f'Timeout on attempt {attempt}')
+                if attempt <= self.MAX_ATTEMPTS:
+                    logger.info('retrying')
+                    attempt += 1
+                    continue
+                logger.error('Too many errors, giving up')
             logger.debug(f'{res}{res.json()}')
             if res.status_code == requests.codes.ok:
                 return res.json()
@@ -293,10 +331,19 @@ class Sheet:
         logger.debug(json.dumps(body))
 
         token_refresh_attempted = False
+        attempt = 1
         while True:
             logger.debug('sending request...')
             logger.debug(self.requests_session.headers)
-            res = self.requests_session.post(base_url, json=body, timeout=10)
+            try:
+                res = self.requests_session.post(base_url, json=body, timeout=10)
+            except requests.exceptions.Timeout:
+                logger.error(f'Timeout on attempt {attempt}')
+                if attempt <= self.MAX_ATTEMPTS:
+                    logger.info('retrying')
+                    attempt += 1
+                    continue
+                logger.error('Too many errors, giving up')
             logger.debug(f'{res}{res.json()}')
             if res.status_code == requests.codes.ok:
                 return res.json()
