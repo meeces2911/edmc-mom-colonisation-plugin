@@ -159,8 +159,10 @@ class Sheet:
                 'endColumnIndex': rangeEnd[0] + 1                   # Exclusive (ie, + 1 from where you want to finish)
             }
 
-    def _get_datetime_string(self) -> str:
-        return datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace('T',' ').replace('+00:00', '')        
+    def _get_datetime_string(self, tsStr: str | None = None) -> str:
+        if not tsStr:
+            tsStr = datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat()
+        return tsStr.replace('T',' ').replace('+00:00', '').replace('Z', '')
 
     def _get_carrier_name_from_id(self, id: str) -> str:
         return self.carrierTabNames[id]
@@ -773,7 +775,7 @@ class Sheet:
         if self.sheetFunctionality.get(sheet, {}).get('Timestamp', False):
             if not deliveryEnabled:
                 body['values'][0].append(None)    
-            body['values'][0].append(timestamp)
+            body['values'][0].append(self._get_datetime_string(timestamp))
 
         logger.debug(body)
         if not update:
@@ -1139,7 +1141,7 @@ class Sheet:
             logger.info(f"SCS Reconcile currently in progress by '{lockedByCmdr[0][0]}', skipping")
             return
         else:
-            logger.info('Starting SCS Reconcile')
+            logger.info('Starting SCS Reconcile, locking mutex')
             mutexData['values'] = [
                 [cmdr]
             ]
@@ -1185,6 +1187,7 @@ class Sheet:
                 break
             logger.debug(sheetValues)
 
+            deliveryEnabled: bool = self.sheetFunctionality.get(sheet, {}).get('Delivery', False)
             includeTS: bool = self.sheetFunctionality.get(sheet, {}).get('Timestamp', False)
 
             corrections: list = []
@@ -1197,9 +1200,13 @@ class Sheet:
 
                 # Commodity still required by the sheet
                 if sheetDemand > 0 and sheetDemand != commodityDemand:
-                    entry = [self.commodity_type_name_to_dropdown(commodityName), system, sheetDemand - commodityDemand, True]
+                    entry = [self.commodity_type_name_to_dropdown(commodityName), system, sheetDemand - commodityDemand]
+                    if deliveryEnabled:
+                        entry.append(True)
                     if includeTS:
-                        entry.append(timestamp)
+                        if not deliveryEnabled:
+                            entry.append(None)
+                        entry.append(self._get_datetime_string(timestamp))
                     corrections.append(entry)
 
             logger.debug(f'Corrections required: {corrections}')
@@ -1214,10 +1221,43 @@ class Sheet:
                 'majorDimension': 'ROWS',
                 'values': corrections
             }
-            self.insert_data(gsRange, body)
+            response = self.insert_data(gsRange, body)
+
+            if len(response) > 0 and deliveryEnabled:
+                logger.debug('Formatting Delivery cell')
+                updates = response.get('updates', response)
+                updatedRange = updates.get('updatedRange')
+                if updatedRange:
+                    #logger.debug('updatedRange section found')
+                    # Keep track of our in-transit commodities
+                    logger.debug('Converting updatedRange to numeric indices')
+                    upRange = self._convert_A1_range_to_idx_range(updatedRange)
+                    logger.debug(upRange)
+                    # We just want to update Column D
+                    upRange['startColumnIndex'] = 3
+                    upRange['endColumnIndex'] = int(upRange['startColumnIndex']) + 1
+                    sheetUpdates: list = [
+                        {
+                            'repeatCell': {
+                                'range': upRange,
+                                'cell': {
+                                    'dataValidation': {
+                                        'condition': {
+                                            'type': 'BOOLEAN'
+                                        }
+                                    }
+                                },
+                                'fields': 'dataValidation.condition'
+                            }
+                        }
+                    ]
+                    self.update_sheet(sheetUpdates)   
+                else:
+                    raise Exception('No updatedRange found in response')
 
         finally:
             # Then, finally, remove the mutex
+            logger.debug("Clearing mutex")
             mutexData['values'][0] = [""]
             self.update_data(mutexData['range'], mutexData)
 

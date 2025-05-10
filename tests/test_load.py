@@ -225,7 +225,7 @@ def test_journal_entry_ColonisationConstructionDepot():
     # SCS Offload Corrections
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {'range': "'SCS Offload'!A:A", 'majorDimension': 'ROWS', 'values': [['Aluminium', 'M7 Sector CG-X d1-90', 18, True, '2025-04-13T04:17:39Z'], ['Ceramic Composites', 'M7 Sector CG-X d1-90', 13, True, '2025-04-13T04:17:39Z'], ['CMM Composite', 'M7 Sector CG-X d1-90', 38, True, '2025-04-13T04:17:39Z'], ['Copper', 'M7 Sector CG-X d1-90', 5, True, '2025-04-13T04:17:39Z'], ['Food Cartridges', 'M7 Sector CG-X d1-90', 2, True, '2025-04-13T04:17:39Z'], ['Insulating Membrane', 'M7 Sector CG-X d1-90', 17, True, '2025-04-13T04:17:39Z'], ['Liquid Oxygen', 'M7 Sector CG-X d1-90', 23, True, '2025-04-13T04:17:39Z'], ['Medical Diagnostic Equipment', 'M7 Sector CG-X d1-90', 1, True, '2025-04-13T04:17:39Z'], ['Polymers', 'M7 Sector CG-X d1-90', 14, True, '2025-04-13T04:17:39Z'], ['Semiconductors', 'M7 Sector CG-X d1-90', 2, True, '2025-04-13T04:17:39Z'], ['Steel', 'M7 Sector CG-X d1-90', 166, True, '2025-04-13T04:17:39Z'], ['Superconductors', 'M7 Sector CG-X d1-90', 3, True, '2025-04-13T04:17:39Z'], ['Titanium', 'M7 Sector CG-X d1-90', 16, True, '2025-04-13T04:17:39Z'], ['Water', 'M7 Sector CG-X d1-90', 60, True, '2025-04-13T04:17:39Z'], ['Water Purifiers', 'M7 Sector CG-X d1-90', 1, True, '2025-04-13T04:17:39Z']]}
+    assert req[1] == {'range': "'SCS Offload'!A:A", 'majorDimension': 'ROWS', 'values': [['Aluminium', 'M7 Sector CG-X d1-90', 18, True, '2025-04-13 04:17:39'], ['Ceramic Composites', 'M7 Sector CG-X d1-90', 13, True, '2025-04-13 04:17:39'], ['CMM Composite', 'M7 Sector CG-X d1-90', 38, True, '2025-04-13 04:17:39'], ['Copper', 'M7 Sector CG-X d1-90', 5, True, '2025-04-13 04:17:39'], ['Food Cartridges', 'M7 Sector CG-X d1-90', 2, True, '2025-04-13 04:17:39'], ['Insulating Membrane', 'M7 Sector CG-X d1-90', 17, True, '2025-04-13 04:17:39'], ['Liquid Oxygen', 'M7 Sector CG-X d1-90', 23, True, '2025-04-13 04:17:39'], ['Medical Diagnostic Equipment', 'M7 Sector CG-X d1-90', 1, True, '2025-04-13 04:17:39'], ['Polymers', 'M7 Sector CG-X d1-90', 14, True, '2025-04-13 04:17:39'], ['Semiconductors', 'M7 Sector CG-X d1-90', 2, True, '2025-04-13 04:17:39'], ['Steel', 'M7 Sector CG-X d1-90', 166, True, '2025-04-13 04:17:39'], ['Superconductors', 'M7 Sector CG-X d1-90', 3, True, '2025-04-13 04:17:39'], ['Titanium', 'M7 Sector CG-X d1-90', 16, True, '2025-04-13 04:17:39'], ['Water', 'M7 Sector CG-X d1-90', 60, True, '2025-04-13 04:17:39'], ['Water Purifiers', 'M7 Sector CG-X d1-90', 1, True, '2025-04-13 04:17:39']]}
 
     # SCS Reconcile Mutex Clear
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
@@ -253,7 +253,7 @@ def test_journal_entry_ColonisationConstructionDepot():
     # SCS Offload Corrections
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {'range': "'SCS Offload'!A:A", 'majorDimension': 'ROWS', 'values': [['Aluminium', 'M7 Sector CG-X d1-90', 18, True, '2025-04-13T04:17:39Z'], ['Ceramic Composites', 'M7 Sector CG-X d1-90', 13, True, '2025-04-13T04:17:39Z'], ['CMM Composite', 'M7 Sector CG-X d1-90', 38, True, '2025-04-13T04:17:39Z'], ['Copper', 'M7 Sector CG-X d1-90', 5, True, '2025-04-13T04:17:39Z'], ['Food Cartridges', 'M7 Sector CG-X d1-90', 2, True, '2025-04-13T04:17:39Z'], ['Insulating Membrane', 'M7 Sector CG-X d1-90', 17, True, '2025-04-13T04:17:39Z'], ['Liquid Oxygen', 'M7 Sector CG-X d1-90', 23, True, '2025-04-13T04:17:39Z'], ['Medical Diagnostic Equipment', 'M7 Sector CG-X d1-90', 1, True, '2025-04-13T04:17:39Z'], ['Polymers', 'M7 Sector CG-X d1-90', 14, True, '2025-04-13T04:17:39Z'], ['Semiconductors', 'M7 Sector CG-X d1-90', 2, True, '2025-04-13T04:17:39Z'], ['Steel', 'M7 Sector CG-X d1-90', 166, True, '2025-04-13T04:17:39Z'], ['Superconductors', 'M7 Sector CG-X d1-90', 3, True, '2025-04-13T04:17:39Z'], ['Titanium', 'M7 Sector CG-X d1-90', 16, True, '2025-04-13T04:17:39Z'], ['Water', 'M7 Sector CG-X d1-90', 60, True, '2025-04-13T04:17:39Z'], ['Water Purifiers', 'M7 Sector CG-X d1-90', 1, True, '2025-04-13T04:17:39Z']]}
+    assert req[1] == {'range': "'SCS Offload'!A:A", 'majorDimension': 'ROWS', 'values': [['Aluminium', 'M7 Sector CG-X d1-90', 18, True, '2025-04-13 04:17:39'], ['Ceramic Composites', 'M7 Sector CG-X d1-90', 13, True, '2025-04-13 04:17:39'], ['CMM Composite', 'M7 Sector CG-X d1-90', 38, True, '2025-04-13 04:17:39'], ['Copper', 'M7 Sector CG-X d1-90', 5, True, '2025-04-13 04:17:39'], ['Food Cartridges', 'M7 Sector CG-X d1-90', 2, True, '2025-04-13 04:17:39'], ['Insulating Membrane', 'M7 Sector CG-X d1-90', 17, True, '2025-04-13 04:17:39'], ['Liquid Oxygen', 'M7 Sector CG-X d1-90', 23, True, '2025-04-13 04:17:39'], ['Medical Diagnostic Equipment', 'M7 Sector CG-X d1-90', 1, True, '2025-04-13 04:17:39'], ['Polymers', 'M7 Sector CG-X d1-90', 14, True, '2025-04-13 04:17:39'], ['Semiconductors', 'M7 Sector CG-X d1-90', 2, True, '2025-04-13 04:17:39'], ['Steel', 'M7 Sector CG-X d1-90', 166, True, '2025-04-13 04:17:39'], ['Superconductors', 'M7 Sector CG-X d1-90', 3, True, '2025-04-13 04:17:39'], ['Titanium', 'M7 Sector CG-X d1-90', 16, True, '2025-04-13 04:17:39'], ['Water', 'M7 Sector CG-X d1-90', 60, True, '2025-04-13 04:17:39'], ['Water Purifiers', 'M7 Sector CG-X d1-90', 1, True, '2025-04-13 04:17:39']]}
 
     # SCS Reconcile Mutex Clear
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
@@ -368,28 +368,28 @@ def test_journal_entry_ColonisationContribution():
 
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Aluminium", "M7 Sector CG-X d1-90", 102, None, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Aluminium", "M7 Sector CG-X d1-90", 102, None, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Ceramic Composites", "M7 Sector CG-X d1-90", 503, None, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Ceramic Composites", "M7 Sector CG-X d1-90", 503, None, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Computer Components", "M7 Sector CG-X d1-90", 52, None, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Computer Components", "M7 Sector CG-X d1-90", 52, None, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Food Cartridges", "M7 Sector CG-X d1-90", 20, None, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Food Cartridges", "M7 Sector CG-X d1-90", 20, None, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Medical Diagnostic Equipment", "M7 Sector CG-X d1-90", 13, None, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Medical Diagnostic Equipment", "M7 Sector CG-X d1-90", 13, None, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Non-Lethal Weapons", "M7 Sector CG-X d1-90", 11, None, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Non-Lethal Weapons", "M7 Sector CG-X d1-90", 11, None, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Power Generators", "M7 Sector CG-X d1-90", 17, None, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Power Generators", "M7 Sector CG-X d1-90", 17, None, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Water Purifiers", "M7 Sector CG-X d1-90", 34, None, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Water Purifiers", "M7 Sector CG-X d1-90", 34, None, "2025-04-13 08:36:25"]]}
 
     plugin.this.sheet.sheetFunctionality['SCS Offload'] = {
         "Delivery": True,
@@ -479,56 +479,56 @@ def test_journal_entry_ColonisationContribution():
 
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Aluminium", "M7 Sector CG-X d1-90", 102, True, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Aluminium", "M7 Sector CG-X d1-90", 102, True, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
     assert req[1] == {"requests": [{ "repeatCell": { "range": {"sheetId": 565128439, "startRowIndex": 71, "endRowIndex": 72, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
     
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Ceramic Composites", "M7 Sector CG-X d1-90", 503, True, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Ceramic Composites", "M7 Sector CG-X d1-90", 503, True, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
     assert req[1] == {"requests": [{ "repeatCell": { "range": {"sheetId": 565128439, "startRowIndex": 72, "endRowIndex": 73, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
     
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Computer Components", "M7 Sector CG-X d1-90", 52, True, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Computer Components", "M7 Sector CG-X d1-90", 52, True, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
     assert req[1] == {"requests": [{ "repeatCell": { "range": {"sheetId": 565128439, "startRowIndex": 73, "endRowIndex": 74, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
 
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Food Cartridges", "M7 Sector CG-X d1-90", 20, True, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Food Cartridges", "M7 Sector CG-X d1-90", 20, True, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
     assert req[1] == {"requests": [{ "repeatCell": { "range": {"sheetId": 565128439, "startRowIndex": 74, "endRowIndex": 75, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
 
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Medical Diagnostic Equipment", "M7 Sector CG-X d1-90", 13, True, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Medical Diagnostic Equipment", "M7 Sector CG-X d1-90", 13, True, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
     assert req[1] == {"requests": [{ "repeatCell": { "range": {"sheetId": 565128439, "startRowIndex": 75, "endRowIndex": 76, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
 
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Non-Lethal Weapons", "M7 Sector CG-X d1-90", 11, True, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Non-Lethal Weapons", "M7 Sector CG-X d1-90", 11, True, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
     assert req[1] == {"requests": [{ "repeatCell": { "range": {"sheetId": 565128439, "startRowIndex": 76, "endRowIndex": 77, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
 
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Power Generators", "M7 Sector CG-X d1-90", 17, True, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Power Generators", "M7 Sector CG-X d1-90", 17, True, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
     assert req[1] == {"requests": [{ "repeatCell": { "range": {"sheetId": 565128439, "startRowIndex": 77, "endRowIndex": 78, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
 
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED"
-    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Water Purifiers", "M7 Sector CG-X d1-90", 34, True, "2025-04-13T08:36:25Z"]]}
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Water Purifiers", "M7 Sector CG-X d1-90", 34, True, "2025-04-13 08:36:25"]]}
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
     assert req[1] == {"requests": [{ "repeatCell": { "range": {"sheetId": 565128439, "startRowIndex": 78, "endRowIndex": 79, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
