@@ -1203,6 +1203,9 @@ class Sheet:
                     corrections.append(entry)
 
             logger.debug(f'Corrections required: {corrections}')
+            if len(corrections) == 0:
+                logger.debug('No corrections required')
+                return
 
             sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
             gsRange = f"'{sheet}'!A:A"
