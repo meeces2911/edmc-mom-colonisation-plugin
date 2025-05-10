@@ -1192,7 +1192,7 @@ class Sheet:
                 commodityName = resource['Name'][1:-6]  # Strip the $ and _name bits off. $aluminium_name -> aliminium
                 commodityRequired = int(resource['RequiredAmount'])
                 commodityDemand = commodityRequired - int(resource['ProvidedAmount'])
-                sheetDemand = commodityRequired - sheetValues.get(commodityName, commodityRequired)
+                sheetDemand = commodityRequired - sheetValues.get(commodityName, 0)
                 logger.debug(f'Checking {commodityName}: {commodityDemand} vs {sheetDemand}')
 
                 # Commodity still required by the sheet
