@@ -733,6 +733,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             # Update the carrier location
             if this.sheet and station in this.sheet.carrierTabNames.keys():
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_LOC_UPDATE, system))
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_JUMP, {}))
                 this.latestCarrierCallsign = station
 
             # Update cargo capacity if its changed (There might be a better event for this)
@@ -950,7 +951,8 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             """
             if this.myCarrierCallsign and this.sheet and this.myCarrierCallsign in this.sheet.carrierTabNames.keys():
                 logger.debug(f'Carrier "{this.myCarrierCallsign}" known, creating queue entry')
-                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
+                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_LOC_UPDATE, entry['StarSystem']))
+                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_JUMP, {}))
         case 'CarrierStats':
             """
             {
@@ -1057,7 +1059,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             if this.myCarrierCallsign and this.sheet and this.myCarrierCallsign in this.sheet.carrierTabNames.keys():
                 logger.debug(f'Carrier "{this.myCarrierCallsign}" known, creating queue entry')
                 this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_LOC_UPDATE, entry['StarSystem']))
-                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
+                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_JUMP, {}))
         case 'CargoTransfer':
             """
             {

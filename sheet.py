@@ -162,7 +162,7 @@ class Sheet:
             }
 
     def _get_datetime_string(self, tsStr: str | None = None) -> str:
-        if not tsStr:
+        if tsStr == None:
             tsStr = datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat()
         return tsStr.replace('T',' ').replace('+00:00', '').replace('Z', '')
 
@@ -695,13 +695,16 @@ class Sheet:
         """Update the carrier sheet with its planned jump"""
         logger.debug("Building Carrier Jump Message")
         range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_JUMP_LOC] or 'G2'}"
+        ts = ''
+        if departTime:
+            ts = self._get_datetime_string(departTime)
         body = {
             'range': range,
             'majorDimension': 'ROWS',
             'values': [
                 [
                     system or '',
-                    departTime or ''
+                    ts
                 ]
             ]
         }

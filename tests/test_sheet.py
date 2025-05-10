@@ -31,7 +31,14 @@ def test__get_datetime_string():
     assert ts
     assert re.search('\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}', ts)
 
+    ts = sheet._get_datetime_string(None)
+    assert ts
+    assert re.search('\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}', ts)
+
     ts = sheet._get_datetime_string('2025-05-10T06:52:59Z')
     assert ts
     assert re.search('\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}', ts)
     assert ts == '2025-05-10 06:52:59'
+
+    ts = sheet._get_datetime_string('')
+    assert ts == ''
