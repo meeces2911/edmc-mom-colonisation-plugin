@@ -12,6 +12,9 @@
   * `ColonisationContribution` Uses this journal entry to determine what has been sold/transferred to the SCS, rather than guessing what cargo is no longer on the ship
   * `ColonisationSystemClaim` is ignored, as it doesn't actually contain any useful information, sadly.
   * `ColonisationSystemClaimRelease` same as claim, this is ignored
+* Added some retry logic for sheet updates. Hopefully this should result in less `TRUE` values being let in places where checkboxes should be
+  * Due to the nature of this, its pretty difficult to test, so feel free to send any feedback my way if you notice this still happening
+* Tweaked the way carrier jumps are handled. Hopefully this should mean less scheduled jumps being left in the cell after the carrier has finished jumpiing
 
 ### Fixed
 * (Finally) Fixed timestamps being entered in the wrong cell if Delivery Tracking was disabled
