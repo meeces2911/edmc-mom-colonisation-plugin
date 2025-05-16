@@ -1,5 +1,11 @@
 # Change Log
 
+## 1.3.1
+
+### What's Changed
+* Increased the default timeout of any sheet updates to 30 seconds
+  * This should reduce the chance of double (or tripple) ups being created as part of the retry logic, until I have a chance to fix that properly
+
 ## 1.3.0
 
 ### What's Changed
