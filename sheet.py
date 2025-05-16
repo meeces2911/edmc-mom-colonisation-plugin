@@ -39,6 +39,7 @@ class Sheet:
     LOOKUP_DATA_SYSTEM_TABLE_END = 'Data System Table End Column'
 
     MAX_ATTEMPTS = 5
+    TIMEOUT = 30
 
     def __init__(self, auth: Auth, session: requests.Session):
         self.auth: Auth = auth
@@ -185,7 +186,7 @@ class Sheet:
             attempt = 1
             while True:
                 try:
-                    res = self.requests_session.get(base_url, timeout=10)
+                    res = self.requests_session.get(base_url, timeout=self.TIMEOUT)
                 except requests.exceptions.Timeout:
                     logger.error(f'Timeout on attempt {attempt}')
                     if attempt <= self.MAX_ATTEMPTS:
@@ -219,7 +220,7 @@ class Sheet:
             attempt = 1
             while True:
                 try:
-                    res = self.requests_session.get(base_url, timeout=10)
+                    res = self.requests_session.get(base_url, timeout=self.TIMEOUT)
                 except requests.exceptions.Timeout:
                     logger.error(f'Timeout on attempt {attempt}')
                     if attempt <= self.MAX_ATTEMPTS:
@@ -262,7 +263,7 @@ class Sheet:
             logger.debug('sending request...')
             logger.debug(self.requests_session.headers)
             try:
-                res = self.requests_session.post(base_url, json=body, timeout=10)
+                res = self.requests_session.post(base_url, json=body, timeout=self.TIMEOUT)
             except requests.exceptions.Timeout:
                 logger.error(f'Timeout on attempt {attempt}')
                 if attempt <= self.MAX_ATTEMPTS:
@@ -299,7 +300,7 @@ class Sheet:
             logger.debug('sending request...')
             logger.debug(self.requests_session.headers)
             try:
-                res = self.requests_session.put(base_url, json=body, timeout=10)
+                res = self.requests_session.put(base_url, json=body, timeout=self.TIMEOUT)
             except requests.exceptions.Timeout:
                 logger.error(f'Timeout on attempt {attempt}')
                 if attempt <= self.MAX_ATTEMPTS:
@@ -336,7 +337,7 @@ class Sheet:
             logger.debug('sending request...')
             logger.debug(self.requests_session.headers)
             try:
-                res = self.requests_session.post(base_url, json=body, timeout=10)
+                res = self.requests_session.post(base_url, json=body, timeout=self.TIMEOUT)
             except requests.exceptions.Timeout:
                 logger.error(f'Timeout on attempt {attempt}')
                 if attempt <= self.MAX_ATTEMPTS:
