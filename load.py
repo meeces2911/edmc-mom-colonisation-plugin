@@ -715,6 +715,8 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
 
             if entry.get('StationType') == 'FleetCarrier':
                 this.latestCarrierCallsign = station
+                # Check for any in-transit cargo listed on the sheet
+                # We may have had to log out to work around the FC cargo bug
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
                 if len(state.get('Cargo', {})) == 0:
                     # If we've found any, remove them from the spreadsheet

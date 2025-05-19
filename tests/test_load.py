@@ -139,7 +139,7 @@ def plugin_start_stop():
     assert len(MOCK_HTTP_RESPONSES) == 0
     assert len(MOCK_HTTP_RESPONSE_CODES) == 0
 
-def test_journal_entry_start_in_space_with_cargo():
+def test_journal_entry_Startup_LoadGame():
     """Test 'Startup' or 'LoadGame' events"""
     entry = {'timestamp': '2025-04-11T08:18:27Z', 'event': 'LoadGame', 'FID': '9001', 'Commander': 'Meeces2911', 'Horizons': True, 'Odyssey': True, 'Ship': 'Type9', 'Ship_Localised': 'Type-9 Heavy', 'ShipID': 10, 'ShipName': 'hauler', 'ShipIdent': 'MIKUNN', 'FuelLevel': 64.0, 'FuelCapacity': 64.0, 'GameMode': 'Open', 'Credits': 3620255325, 'Loan': 0, 'language': 'English/UK', 'gameversion': '4.1.1.0', 'build': 'r312744/r0 '}
     state = {'Cargo': defaultdict(int, {'steel': 720}), 'CargoCapacity': 720}
@@ -161,6 +161,47 @@ def test_journal_entry_start_in_space_with_cargo():
     assert pr.type == plugin.PushRequest.TYPE_CARRIER_INTRANSIT_RECALC
     assert pr.cmdr == monitor.monitor.cmdr
     assert pr.station == None
+
+    entry['StationType'] = 'FleetCarrier'
+    entry['StationName'] = 'X7H-9KW'
+    state = {'CargoCapacity': 512}
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station='X7H-9KW', entry=entry, state=state)
+
+    assert plugin.this.latestCarrierCallsign == 'X7H-9KW'
+    assert plugin.this.cargoCapacity == 512
+
+    # Expecting TYPE_CMDR_UPDATE and 2xTYPE_CARRIER_INTRANSIT_RECALC
+    assert plugin.this.queue.qsize() == 3
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CMDR_UPDATE
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == 'X7H-9KW'
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_INTRANSIT_RECALC
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == 'X7H-9KW'
+    assert pr.data == None
+
+    mock_scs_in_transit_data = """{"range":"'Igneels Tooth'!A1:E500","majorDimension":"ROWS","values":[["CMDR","Commodity","Units","Delivered","Timestamp"],["Starting Inventory","Aluminium","0"],["Starting Inventory","Ceramic Composites","0"],["Starting Inventory","CMM Composite","0"],["Starting Inventory","Computer Components","0"],["Starting Inventory","Copper","0"],["Starting Inventory","Food Cartridges","0"],["Starting Inventory","Fruit and Vedge","0"],["Starting Inventory","Insulating Membrane","0"],["Starting Inventory","Liquid Oxygen","0"],["Starting Inventory","Medical Diagnostic Equipment","0"],["Starting Inventory","Non-Lethal Weapons","0"],["Starting Inventory","Polymers","0"],["Starting Inventory","Power Generators","0"],["Starting Inventory","Semiconductors","0"],["Starting Inventory","Steel","0"],["Starting Inventory","Superconductors","0"],["Starting Inventory","Titanium","0"],["Starting Inventory","Water","0"],["Starting Inventory","Water Purifiers","0"],["cmdr_name","Steel",250,"FALSE"],["cmdr_name","Titanium",320,"FALSE"],["cmdr_name","Power Generators",20,"FALSE"]]}"""
+    _add_mocked_http_response(json.loads(mock_scs_in_transit_data))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(plugin.this.sheet.inTransitCommodities) == 3
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_INTRANSIT_RECALC
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == 'X7H-9KW'
+    assert pr.data['clear'] == True
+
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(plugin.this.sheet.inTransitCommodities) == 0
 
 def test_journal_entry_location():
     entry = { "timestamp":"2025-04-13T00:21:42Z", "event":"Location", "DistFromStarLS":1026.624901, "Docked":True, "StationName":"X7H-9KW", "StationType":"FleetCarrier", "MarketID":3707348992, "StationFaction":{ "Name":"FleetCarrier" }, "StationGovernment":"$government_Carrier;", "StationGovernment_Localised":"Private Ownership", "StationServices":[ "dock", "autodock", "commodities", "contacts", "crewlounge", "rearm", "refuel", "repair", "engineer", "flightcontroller", "stationoperations", "stationMenu", "carriermanagement", "carrierfuel", "socialspace" ], "StationEconomy":"$economy_Carrier;", "StationEconomy_Localised":"Private Enterprise", "StationEconomies":[ { "Name":"$economy_Carrier;", "Name_Localised":"Private Enterprise", "Proportion":1.000000 } ], "Taxi":False, "Multicrew":False, "StarSystem":"Zlotrimi", "SystemAddress":3618249902459, "StarPos":[-16.00000,-23.21875,139.56250], "SystemAllegiance":"Federation", "SystemEconomy":"$economy_Refinery;", "SystemEconomy_Localised":"Refinery", "SystemSecondEconomy":"$economy_Extraction;", "SystemSecondEconomy_Localised":"Extraction", "SystemGovernment":"$government_Corporate;", "SystemGovernment_Localised":"Corporate", "SystemSecurity":"$SYSTEM_SECURITY_medium;", "SystemSecurity_Localised":"Medium Security", "Population":930301705, "Body":"Zlotrimi A 4", "BodyID":7, "BodyType":"Planet", "Powers":[ "Yuri Grom" ], "PowerplayState":"Unoccupied", "PowerplayConflictProgress":[ { "Power":"Yuri Grom", "ConflictProgress":0.074167 } ], "Factions":[ { "Name":"Revolutionary Zlotrimi Green Party", "FactionState":"None", "Government":"Democracy", "Influence":0.096742, "Allegiance":"Federation", "Happiness":"$Faction_HappinessBand2;", "Happiness_Localised":"Happy", "MyReputation":0.000000, "PendingStates":[ { "State":"Election", "Trend":0 } ] }, { "Name":"Zlotrimi Purple Creative Hldgs", "FactionState":"None", "Government":"Corporate", "Influence":0.019743, "Allegiance":"Independent", "Happiness":"$Faction_HappinessBand2;", "Happiness_Localised":"Happy", "MyReputation":0.000000 }, { "Name":"Citizen Party of Adju", "FactionState":"Expansion", "Government":"Communism", "Influence":0.096742, "Allegiance":"Independent", "Happiness":"$Faction_HappinessBand2;", "Happiness_Localised":"Happy", "MyReputation":0.000000, "PendingStates":[ { "State":"Election", "Trend":0 } ], "ActiveStates":[ { "State":"Expansion" } ] }, { "Name":"Zlotrimi Law Party", "FactionState":"None", "Government":"Dictatorship", "Influence":0.053307, "Allegiance":"Independent", "Happiness":"$Faction_HappinessBand2;", "Happiness_Localised":"Happy", "MyReputation":0.000000 }, { "Name":"Manite Inc", "FactionState":"Expansion", "Government":"Corporate", "Influence":0.674235, "Allegiance":"Federation", "Happiness":"$Faction_HappinessBand2;", "Happiness_Localised":"Happy", "MyReputation":7.278460, "RecoveringStates":[ { "State":"Drought", "Trend":0 } ], "ActiveStates":[ { "State":"Boom" }, { "State":"Expansion" } ] }, { "Name":"Zlotrimi Commodities", "FactionState":"None", "Government":"Corporate", "Influence":0.037512, "Allegiance":"Independent", "Happiness":"$Faction_HappinessBand2;", "Happiness_Localised":"Happy", "MyReputation":0.000000 }, { "Name":"Zlotrimi Justice Party", "FactionState":"None", "Government":"Dictatorship", "Influence":0.021718, "Allegiance":"Independent", "Happiness":"$Faction_HappinessBand2;", "Happiness_Localised":"Happy", "MyReputation":0.000000 } ], "SystemFaction":{ "Name":"Manite Inc", "FactionState":"Expansion" }, "Conflicts":[ { "WarType":"election", "Status":"pending", "Faction1":{ "Name":"Revolutionary Zlotrimi Green Party", "Stake":"Cosmic Oversight Core", "WonDays":0 }, "Faction2":{ "Name":"Citizen Party of Adju", "Stake":"Gubarev Port", "WonDays":0 } } ] }
