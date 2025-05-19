@@ -126,6 +126,8 @@ def plugin_start_stop():
     assert plugin.this.sheet
     assert plugin.this.sheet.lookupRanges
     assert len(plugin.this.sheet.lookupRanges) == 14
+    assert plugin.this.sheet.carrierTabNames
+    assert len(plugin.this.sheet.carrierTabNames) == 21
 
     assert plugin.this.thread
 
@@ -225,6 +227,72 @@ def test_journal_entry_FSDJump():
 
     # TODO: Do we care about asserting out logging statements ?
     # If not, then all we're doing is just checking that no exception happens
+
+def test_journal_entry_Docked():   
+    plugin.this.cargoCapacity = 720
+    plugin.this.latestCarrierCallsign = None
+    
+    entry = { "timestamp":"2025-05-16T07:09:00Z", "event":"Docked", "StationName":"X7H-9KW", "StationType":"FleetCarrier", "Taxi":False, "Multicrew":False, "StarSystem":"Ukko", "SystemAddress":2484395313515, "MarketID":3707348992, "StationFaction":{ "Name":"FleetCarrier" }, "StationGovernment":"$government_Carrier;", "StationGovernment_Localised":"Private Ownership", "StationServices":[ "dock", "autodock", "commodities", "contacts", "crewlounge", "rearm", "refuel", "repair", "engineer", "flightcontroller", "stationoperations", "stationMenu", "carriermanagement", "carrierfuel", "socialspace" ], "StationEconomy":"$economy_Carrier;", "StationEconomy_Localised":"Private Enterprise", "StationEconomies":[ { "Name":"$economy_Carrier;", "Name_Localised":"Private Enterprise", "Proportion":1.000000 } ], "DistFromStarLS":25771.605003, "LandingPads":{ "Small":4, "Medium":4, "Large":8 } }
+    state = {'Cargo': defaultdict(int, {'steel': 720}), 'CargoCapacity': 720}
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="Zlotrimi", station="X7H-9KW", entry=entry, state=state)
+    
+    assert plugin.this.queue.qsize() == 2
+    assert plugin.this.latestCarrierCallsign == "X7H-9KW"
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_LOC_UPDATE
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == "Zlotrimi"
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_JUMP
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == {}
+
+    # Change ship/capacity
+    state = {'Cargo': defaultdict(int, {'steel': 720}), 'CargoCapacity': 512}
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="Zlotrimi", station="X7H-9KW", entry=entry, state=state)
+
+    assert plugin.this.queue.qsize() == 3
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_LOC_UPDATE
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == "Zlotrimi"
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_JUMP
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == {}
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CMDR_UPDATE
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == None
+
+    # Dock to SCS that we don't know about yet
+    entry = { "timestamp":"2025-05-10T06:21:18Z", "event":"Docked", "StationName":"$EXT_PANEL_ColonisationShip; Dupont Territories", "StationType":"SurfaceStation", "Taxi":False, "Multicrew":False, "StarSystem":"Pru Euq OG-J b50-5", "SystemAddress":11664728663985, "MarketID":3950902274, "StationFaction":{ "Name":"Brewer Corporation" }, "StationGovernment":"$government_Corporate;", "StationGovernment_Localised":"Corporate", "StationServices":[ "dock", "autodock", "commodities", "contacts", "missions", "rearm", "refuel", "repair", "engineer", "facilitator", "flightcontroller", "stationoperations", "searchrescue", "stationMenu", "colonisationcontribution" ], "StationEconomy":"$economy_Colony;", "StationEconomy_Localised":"Colony", "StationEconomies":[ { "Name":"$economy_Colony;", "Name_Localised":"Colony", "Proportion":1.000000 } ], "DistFromStarLS":912.564607, "LandingPads":{ "Small":8, "Medium":8, "Large":16 } }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="Pru Euq OG-J b50-5", station="$EXT_PANEL_ColonisationShip; Dupont Territories", entry=entry, state=state)
+
+    assert plugin.this.queue.qsize() == 1
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_SCS_SYSTEM_ADD
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "Pru Euq OG-J b50-5"
+    assert pr.data == entry
+
 
 def test_journal_entry_ColonisationConstructionDepot():
     plugin.this.sheet.systemsInProgress.append("M7 Sector CG-X d1-90")
