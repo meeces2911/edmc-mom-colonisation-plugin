@@ -33,6 +33,7 @@ class Sheet:
     LOOKUP_CMDR_INFO = 'CMDR Info'
     LOOKUP_SYSTEMS_IN_PROGRESS = 'In Progress Systems'
     LOOKUP_SCS_PROGRESS_PIVOT = 'SCS Progress Pivot'
+    LOOKUP_SCS_PROGRESS_PIVOT_INTRANSIT = 'SCS Progress In-Transit Pivot'
     LOOKUP_SCS_RECONCILE_MUTEX = 'Reconcile Mutex'
     LOOKUP_SCS_SYSTEMS_WITH_NO_DATA = 'Systems With No Data'
     LOOKUP_DATA_SYSTEM_TABLE = 'Data System Table Start'
@@ -1233,6 +1234,39 @@ class Sheet:
                     if commodityDemand == "":
                         continue
                     sheetValues[self.dropdown_to_commodity_type_name(commodityName)] = int(commodityDemand)
+
+                # Job done
+                break
+            logger.debug(sheetValues)
+
+            # The delivery pivot table includes in-transit commodities too
+            # So, we need to remove those form our list, otherwise they will appear
+            # as differences even though we technically know about them already
+
+            sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
+            gsRange = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_SCS_PROGRESS_PIVOT] or 'CB4:EE'}"
+            data  = self.fetch_data(gsRange)
+            logger.debug(data)
+
+            for row in data['values']:
+                # skip blank rows
+                if len(row) == 0 or row[0] == "":
+                    continue
+                if row[0] == 'Delivered To':
+                    commodityNames = row
+                    continue
+                # If not our system, then we also don't care
+                if row[0] != system:
+                    continue
+
+                for colIdx in range(1, len(row)):
+                    commodityName = commodityNames[colIdx]
+                    commodityDemand = row[colIdx]
+                    logger.debug(f'{commodityName} {commodityDemand}')
+                    # Skip empty commodities
+                    if commodityDemand == "":
+                        continue
+                    sheetValues[self.dropdown_to_commodity_type_name(commodityName)] -= int(commodityDemand)
 
                 # Job done
                 break

@@ -664,7 +664,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
     if not location and entry.get('CarrierID'): # Event must be carrier based
         location = this.latestCarrierCallsign
     
-    if entry['event'] in ('FSSSignalDiscovered', 'Friends', 'Music', 'ReceiveText'):
+    if entry['event'] in ('FSSSignalDiscovered', 'Friends', 'Music', 'ReceiveText', 'ReservoirReplenished'):
         # Suppress some events that we don't care about/don't want to log
         return
     
