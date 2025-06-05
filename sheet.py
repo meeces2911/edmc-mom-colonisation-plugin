@@ -1203,6 +1203,7 @@ class Sheet:
             # Get the current values
             sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
             gsRange = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_SCS_PROGRESS_PIVOT] or 'W4:BY'}"
+            logger.debug('Fetching current values from pivot table 1')
             data  = self.fetch_data(gsRange)
             logger.debug(data)
             
@@ -1244,7 +1245,8 @@ class Sheet:
             # as differences even though we technically know about them already
 
             sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
-            gsRange = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_SCS_PROGRESS_PIVOT] or 'CB4:EE'}"
+            gsRange = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_SCS_PROGRESS_PIVOT_INTRANSIT] or 'CB4:EE'}"
+            logger.debug('Fetching in-transit values from pivot table 2')
             data  = self.fetch_data(gsRange)
             logger.debug(data)
 
@@ -1356,7 +1358,6 @@ class Sheet:
         startRow = idxDict['startRowIndex']
         endColumn = self.lookupRanges[self.LOOKUP_DATA_SYSTEM_TABLE_END] or 'BD'
         endColumnNum = self._A1_to_index(endColumn)[0]
-        logger.critical(endColumnNum)
         commodityRange = systemRange.split(':')[0] + ':' + endColumn + str(startRow+1)  # Data!A59 + : + BD + 59
 
         data = self.fetch_data_bulk([systemRange, commodityRange])
