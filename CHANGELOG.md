@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.3.3
+
+### Fixed
+* Fixed a typo in the lookup key used to check in-transit cargo while doing SCS Reconciliations
+
 ## 1.3.2
 
 ### Fixed
