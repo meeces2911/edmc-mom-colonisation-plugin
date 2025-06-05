@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.3.2
+
+### Fixed
+* Fixed SCS Reconcile not taking into account in-transit cargo if the reconcile was triggered before selling
+
 ## 1.3.1
 
 ### What's Changed
