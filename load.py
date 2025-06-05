@@ -1234,10 +1234,10 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                     return
                 
                 logger.debug(f'SCS in known system {system}, creating queue entry')
-                this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_PROGRESS_UPDATE, entry))
                 if not system in this.dataPopulatedForSystems:
                     this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_DATA_POPULATE, entry))
                     this.dataPopulatedForSystems.append(system)
+                this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_PROGRESS_UPDATE, entry))
                 this.nextSCSReconcileTime = int(time.time()) + int(this.killswitches[KILLSWITCH_SCS_RECONCILE_DELAY])
         case 'ColonisationContribution':
             """
