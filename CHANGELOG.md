@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.3.4
+
+### Fixed
+* In-Transit cargo not getting cleared correctly when deliverying them to a different fleet carrier than expected
+
 ## 1.3.3
 
 ### Fixed
