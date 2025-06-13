@@ -610,9 +610,9 @@ def process_item(item: PushRequest) -> None:
                 
                 this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, inTransit=True)
             case PushRequest.TYPE_CARRIER_INTRANSIT_RECALC:
-                logger.info('Processing Carrier In-Transit Recalculate request')
-                resetCargo = False
                 assignedCarrier = this.cmdrsAssignedCarrier.get()
+                resetCargo = False
+                logger.info(f'Processing Carrier In-Transit Recalculate request for {item.station or assignedCarrier}')
                 
                 if item.data:
                     resetCargo = bool(item.data.get('clear', False))
@@ -713,16 +713,26 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             this.cargoCapacity = state['CargoCapacity']
             this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_UPDATE, None))
 
+            # Check for any in-transit cargo for our assigned carrier
+            this.queue.put(PushRequest(cmdr, None, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
+            if len(state.get('Cargo', {})) == 0:
+                logger.debug('No cargo, queuing in-transit clear')
+                this.queue.put(PushRequest(cmdr, None, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))
+
             if entry.get('StationType') == 'FleetCarrier':
+                logger.debug('Docked at FleetCarrier, also checking for additional in-transit cargo')
                 this.latestCarrierCallsign = station
-                # Check for any in-transit cargo listed on the sheet
-                # We may have had to log out to work around the FC cargo bug
-                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
-                if len(state.get('Cargo', {})) == 0:
-                    # If we've found any, remove them from the spreadsheet
-                    this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))
-            else:
-                this.queue.put(PushRequest(cmdr, None, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
+                
+                assignedCarrierId = this.sheet._get_carrier_id_from_name(this.cmdrsAssignedCarrier.get())
+                if station != assignedCarrierId:
+                
+                    # Check for any in-transit cargo listed on the sheet
+                    # We may have had to log out to work around the FC cargo bug
+                    this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
+                    if len(state.get('Cargo', {})) == 0:
+                        logger.debug('No cargo, queuing in-transit clear')
+                        this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))  # Currently docked carrier
+                
         case 'Location':
             logger.info(f'Location: In system {system}')
             if station is None:
@@ -746,6 +756,10 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             # Add SCS to spreadsheet if missing
             if this.sheet and not system in this.sheet.systemsInProgress and (station == 'System Colonisation Ship' or station.startswith('$EXT_PANEL_ColonisationShip')):
                 this.queue.put(PushRequest(cmdr, system, PushRequest.TYPE_SCS_SYSTEM_ADD, entry))
+        case 'Cargo':
+            # No more cago, lets make sure any in-transit stuff we might have been tracking is cleared
+            if int(entry.get('Count', 0)) == 0:
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))
         case 'Market':
             # Actual market data is in the market.json file
             if this.sheet and station in this.sheet.carrierTabNames.keys():

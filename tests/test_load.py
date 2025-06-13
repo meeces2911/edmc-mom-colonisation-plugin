@@ -164,9 +164,14 @@ def test_journal_entry_Startup_LoadGame():
     assert pr.cmdr == monitor.monitor.cmdr
     assert pr.station == None
 
+    ########################################
+    ## Docked to same carrier as assigned ##
+    ########################################
+
+    plugin.this.cmdrsAssignedCarrier.set('Igneels Tooth')
     entry['StationType'] = 'FleetCarrier'
     entry['StationName'] = 'X7H-9KW'
-    state = {'CargoCapacity': 512}
+    state = {'Cargo': defaultdict(), 'CargoCapacity': 512}
     plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station='X7H-9KW', entry=entry, state=state)
 
     assert plugin.this.latestCarrierCallsign == 'X7H-9KW'
@@ -181,6 +186,79 @@ def test_journal_entry_Startup_LoadGame():
     assert pr.cmdr == monitor.monitor.cmdr
     assert pr.station == 'X7H-9KW'
 
+    # The one to fetch the latest in-transit data from the sheet
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_INTRANSIT_RECALC
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == None  # None = assignedCarrier
+    assert pr.data == None
+
+    mock_scs_in_transit_data = """{"range":"'Igneels Tooth'!A1:E500","majorDimension":"ROWS","values":[["CMDR","Commodity","Units","Delivered","Timestamp"],["Starting Inventory","Aluminium","0"],["Starting Inventory","Ceramic Composites","0"],["Starting Inventory","CMM Composite","0"],["Starting Inventory","Computer Components","0"],["Starting Inventory","Copper","0"],["Starting Inventory","Food Cartridges","0"],["Starting Inventory","Fruit and Vedge","0"],["Starting Inventory","Insulating Membrane","0"],["Starting Inventory","Liquid Oxygen","0"],["Starting Inventory","Medical Diagnostic Equipment","0"],["Starting Inventory","Non-Lethal Weapons","0"],["Starting Inventory","Polymers","0"],["Starting Inventory","Power Generators","0"],["Starting Inventory","Semiconductors","0"],["Starting Inventory","Steel","0"],["Starting Inventory","Superconductors","0"],["Starting Inventory","Titanium","0"],["Starting Inventory","Water","0"],["Starting Inventory","Water Purifiers","0"],["cmdr_name","Steel",250,"FALSE"],["cmdr_name","Titanium",320,"FALSE"],["cmdr_name","Power Generators",20,"FALSE"]]}"""
+    _add_mocked_http_response(json.loads(mock_scs_in_transit_data))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(plugin.this.sheet.inTransitCommodities) == 3
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_INTRANSIT_RECALC
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == None  # None = assignedCarrier
+    assert pr.data['clear'] == True
+
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(plugin.this.sheet.inTransitCommodities) == 0
+
+    #############################################
+    ## Docked to DIFFERENT carrier as assigned ##
+    #############################################
+
+    plugin.this.cmdrsAssignedCarrier.set('NAC Hyperspace Bypass')
+    entry['StationType'] = 'FleetCarrier'
+    entry['StationName'] = 'X7H-9KW'
+    state = {'Cargo': defaultdict(), 'CargoCapacity': 512}
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station='X7H-9KW', entry=entry, state=state)
+
+    assert plugin.this.latestCarrierCallsign == 'X7H-9KW'
+    assert plugin.this.cargoCapacity == 512
+
+    # Expecting TYPE_CMDR_UPDATE and 4xTYPE_CARRIER_INTRANSIT_RECALC
+    assert plugin.this.queue.qsize() == 5
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CMDR_UPDATE
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == 'X7H-9KW'
+
+    # The one to fetch the latest in-transit data from the sheet
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_INTRANSIT_RECALC
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == None  # None = assignedCarrier
+    assert pr.data == None
+
+    mock_scs_in_transit_data = """{"range":"'NAC Hyperspace Bypass'!A1:E500","majorDimension":"ROWS","values":[["CMDR","Commodity","Units","Delivered","Timestamp"],["Starting Inventory","Aluminium","0"],["Starting Inventory","Ceramic Composites","0"],["Starting Inventory","CMM Composite","0"],["Starting Inventory","Computer Components","0"],["Starting Inventory","Copper","0"],["Starting Inventory","Food Cartridges","0"],["Starting Inventory","Fruit and Vedge","0"],["Starting Inventory","Insulating Membrane","0"],["Starting Inventory","Liquid Oxygen","0"],["Starting Inventory","Medical Diagnostic Equipment","0"],["Starting Inventory","Non-Lethal Weapons","0"],["Starting Inventory","Polymers","0"],["Starting Inventory","Power Generators","0"],["Starting Inventory","Semiconductors","0"],["Starting Inventory","Steel","0"],["Starting Inventory","Superconductors","0"],["Starting Inventory","Titanium","0"],["Starting Inventory","Water","0"],["Starting Inventory","Water Purifiers","0"],["cmdr_name","Steel",250,"FALSE"],["cmdr_name","Titanium",320,"FALSE"],["cmdr_name","Power Generators",20,"FALSE"]]}"""
+    _add_mocked_http_response(json.loads(mock_scs_in_transit_data))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(plugin.this.sheet.inTransitCommodities) == 3
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_INTRANSIT_RECALC
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == None  # None = assignedCarrier
+    assert pr.data['clear'] == True
+
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(plugin.this.sheet.inTransitCommodities) == 0
+
+    # The one to fetch the latest in-transit data from the sheet
     pr = plugin.this.queue.get_nowait()
     assert pr
     assert pr.type == plugin.PushRequest.TYPE_CARRIER_INTRANSIT_RECALC
@@ -293,6 +371,22 @@ def test_journal_entry_Docked():
     assert pr.station == "Pru Euq OG-J b50-5"
     assert pr.data == entry
 
+def test_journal_entry_Cargo():
+    entry = { "timestamp":"2025-06-13T21:00:21Z", "event":"Cargo", "Vessel":"Ship", "Count":0 }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="Zlotrimi", station="X7H-9KW", entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 1
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_INTRANSIT_RECALC
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == {'clear': True}
+
+    entry = { "timestamp":"2025-06-13T21:00:21Z", "event":"Cargo", "Vessel":"Ship", "Count":20 }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="Zlotrimi", station="X7H-9KW", entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 0
 
 def test_journal_entry_ColonisationConstructionDepot():
     plugin.this.sheet.systemsInProgress.append("M7 Sector CG-X d1-90")
