@@ -479,7 +479,11 @@ class Sheet:
             for valueRange in data.get('valueRanges'):
                 match rangeIdx:
                     case 0: # Systems in Progress Range
-                        for row in valueRange.get('values'):
+                        values = valueRange.get('values')
+                        if not values:
+                            # If there are not any systems in progress currently, then return early
+                            continue
+                        for row in values:
                             if len(row) == 0 or row[0] == 'System':
                                 continue
                             if not row[0] in self.systemsInProgress:
