@@ -1,5 +1,11 @@
 # Change Log
 
+## 1.3.5
+
+### Fixed
+* Fixed an issue preventing CMDRs who did not depoy the beacon from updating the System Info sheet if they were the first ones to dock
+* Fixed an error being raise when looking for in-progress systems and not finding any
+
 ## 1.3.4
 
 ### Fixed
