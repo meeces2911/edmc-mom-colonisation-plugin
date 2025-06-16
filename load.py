@@ -625,8 +625,9 @@ def process_item(item: PushRequest) -> None:
             case PushRequest.TYPE_SCS_SYSTEM_ADD:
                 logger.info('Processing SCS System Add request')
                 # Keep in mind 'station' here is actually system ;)
+                cmdr: str = ''
                 if item.data['event'] == 'ColonisationBeaconDeployed':
-                    cmdr = item.cmdr
+                    cmdr = str(item.cmdr)
                 this.sheet.add_in_progress_scs_system(item.station, cmdr=cmdr)
             case PushRequest.TYPE_SCS_PROGRESS_UPDATE:
                 logger.info('Processing SCS Progress update')
