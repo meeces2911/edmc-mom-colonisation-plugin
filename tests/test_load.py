@@ -25,7 +25,7 @@ def before_after_test(__global_mocks):
 
 def test_journal_entry_Startup_LoadGame():
     """Test 'Startup' or 'LoadGame' events"""
-    entry = {'timestamp': '2025-04-11T08:18:27Z', 'event': 'LoadGame', 'FID': '9001', 'Commander': 'Meeces2911', 'Horizons': True, 'Odyssey': True, 'Ship': 'Type9', 'Ship_Localised': 'Type-9 Heavy', 'ShipID': 10, 'ShipName': 'hauler', 'ShipIdent': 'MIKUNN', 'FuelLevel': 64.0, 'FuelCapacity': 64.0, 'GameMode': 'Open', 'Credits': 3620255325, 'Loan': 0, 'language': 'English/UK', 'gameversion': '4.1.1.0', 'build': 'r312744/r0 '}
+    entry = {'timestamp': '2025-04-11T08:18:27Z', 'event': 'LoadGame', 'FID': '9001', 'Commander': 'cmdr_name', 'Horizons': True, 'Odyssey': True, 'Ship': 'Type9', 'Ship_Localised': 'Type-9 Heavy', 'ShipID': 10, 'ShipName': 'hauler', 'ShipIdent': 'MIKUNN', 'FuelLevel': 64.0, 'FuelCapacity': 64.0, 'GameMode': 'Open', 'Credits': 3620255325, 'Loan': 0, 'language': 'English/UK', 'gameversion': '4.1.1.0', 'build': 'r312744/r0 '}
     state = {'Cargo': defaultdict(int, {'steel': 720}), 'CargoCapacity': 720}
     plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station=None, entry=entry, state=state)
     
@@ -59,8 +59,8 @@ def test_journal_entry_Startup_LoadGame():
     assert plugin.this.latestCarrierCallsign == 'X7H-9KW'
     assert plugin.this.cargoCapacity == 512
 
-    # Expecting TYPE_CMDR_UPDATE and 2xTYPE_CARRIER_INTRANSIT_RECALC
-    assert plugin.this.queue.qsize() == 3
+    # Expecting TYPE_CMDR_UPDATE and 2xTYPE_CARRIER_INTRANSIT_RECALC for assigned carrier and 2xTYPE_CARRIER_INTRANSIT_RECALC for docked carrier
+    assert plugin.this.queue.qsize() == 5
 
     pr = plugin.this.queue.get_nowait()
     assert pr
@@ -81,7 +81,11 @@ def test_journal_entry_Startup_LoadGame():
     ACTUAL_HTTP_GET_REQUESTS.clear()
     ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
     plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_GET_REQUESTS) == 1
+    assert ACTUAL_HTTP_GET_REQUESTS.pop(0) == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!A:E"
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
     assert len(plugin.this.sheet.inTransitCommodities) == 3
+    assert plugin.this.sheet.inTransitCommodities == {'steel': {"'Igneels Tooth'!A21:E21": 250}, 'titanium': {"'Igneels Tooth'!A22:E22": 320}, 'powergenerators': {"'Igneels Tooth'!A23:E23": 20}}
 
     pr = plugin.this.queue.get_nowait()
     assert pr
@@ -90,8 +94,59 @@ def test_journal_entry_Startup_LoadGame():
     assert pr.station == None  # None = assignedCarrier
     assert pr.data['clear'] == True
 
+    mock_scs_in_transit_data = """{"range":"'Igneels Tooth'!A21:E21","majorDimension":"ROWS","values":[["cmdr_name","Steel","250","FALSE","2025-06-21 04:55:49"]]}"""
+    __add_mocked_http_response(json.loads(mock_scs_in_transit_data))
+    mock_scs_in_transit_data = """{"range":"'Igneels Tooth'!A22:E22","majorDimension":"ROWS","values":[["cmdr_name","Titanium","320","FALSE","2025-06-21 04:55:49"]]}"""
+    __add_mocked_http_response(json.loads(mock_scs_in_transit_data))
+    mock_scs_in_transit_data = """{"range":"'Igneels Tooth'!A23:E23","majorDimension":"ROWS","values":[["cmdr_name","Power Generators","20","FALSE","2025-06-21 04:55:49"]]}"""
+    __add_mocked_http_response(json.loads(mock_scs_in_transit_data))
+    ACTUAL_HTTP_GET_REQUESTS.clear()
     ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
     plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_GET_REQUESTS) == 3
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+    
+    assert ACTUAL_HTTP_GET_REQUESTS.pop(0) == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!A21:E21"
+    assert ACTUAL_HTTP_GET_REQUESTS.pop(0) == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!A22:E22"
+    assert ACTUAL_HTTP_GET_REQUESTS.pop(0) == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!A23:E23"
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
+    assert req[1] == {"requests": [{"deleteRange": {"range": {"sheetId": 1223817771, "startRowIndex": 20, "endRowIndex": 21, "startColumnIndex": 0, "endColumnIndex": 5}, "shiftDimension": "ROWS"}}, {"deleteRange": {"range": {"sheetId": 1223817771, "startRowIndex": 20, "endRowIndex": 21, "startColumnIndex": 0, "endColumnIndex": 5}, "shiftDimension": "ROWS"}}, {"deleteRange": {"range": {"sheetId": 1223817771, "startRowIndex": 20, "endRowIndex": 21, "startColumnIndex": 0, "endColumnIndex": 5}, "shiftDimension": "ROWS"}}]}
+
+    assert len(plugin.this.sheet.inTransitCommodities) == 0
+
+    ########################
+    ## These next 2 should be queued, but skipped, as they are effectively the same as the ones we've just processed above
+    ########################
+
+    # The one to fetch the latest in-transit data from the sheet
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_INTRANSIT_RECALC
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == 'X7H-9KW'  # = dockedCarrier
+    assert pr.data == None
+
+    ACTUAL_HTTP_GET_REQUESTS.clear()
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_GET_REQUESTS) == 0
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+    assert len(plugin.this.sheet.inTransitCommodities) == 0
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_INTRANSIT_RECALC
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == 'X7H-9KW'  # = dockedCarrier
+    assert pr.data['clear'] == True
+
+    ACTUAL_HTTP_GET_REQUESTS.clear()
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_GET_REQUESTS) == 0
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
     assert len(plugin.this.sheet.inTransitCommodities) == 0
 
     #############################################
@@ -107,7 +162,7 @@ def test_journal_entry_Startup_LoadGame():
     assert plugin.this.latestCarrierCallsign == 'X7H-9KW'
     assert plugin.this.cargoCapacity == 512
 
-    # Expecting TYPE_CMDR_UPDATE and 4xTYPE_CARRIER_INTRANSIT_RECALC
+    # Expecting TYPE_CMDR_UPDATE and 2xTYPE_CARRIER_INTRANSIT_RECALC for assigned carrier and 2xTYPE_CARRIER_INTRANSIT_RECALC for docked carrier
     assert plugin.this.queue.qsize() == 5
 
     pr = plugin.this.queue.get_nowait()
@@ -129,7 +184,11 @@ def test_journal_entry_Startup_LoadGame():
     ACTUAL_HTTP_GET_REQUESTS.clear()
     ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
     plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_GET_REQUESTS) == 1
+    assert ACTUAL_HTTP_GET_REQUESTS.pop(0) == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'NAC Hyperspace Bypass'!A:E"
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
     assert len(plugin.this.sheet.inTransitCommodities) == 3
+    assert plugin.this.sheet.inTransitCommodities == {'steel': {"'NAC Hyperspace Bypass'!A21:E21": 250}, 'titanium': {"'NAC Hyperspace Bypass'!A22:E22": 320}, 'powergenerators': {"'NAC Hyperspace Bypass'!A23:E23": 20}}
 
     pr = plugin.this.queue.get_nowait()
     assert pr
@@ -138,8 +197,26 @@ def test_journal_entry_Startup_LoadGame():
     assert pr.station == None  # None = assignedCarrier
     assert pr.data['clear'] == True
 
+    mock_scs_in_transit_data = """{"range":"'NAC Hyperspace Bypass'!A21:E21","majorDimension":"ROWS","values":[["cmdr_name","Steel","250","FALSE","2025-06-21 04:55:49"]]}"""
+    __add_mocked_http_response(json.loads(mock_scs_in_transit_data))
+    mock_scs_in_transit_data = """{"range":"'NAC Hyperspace Bypass'!A22:E22","majorDimension":"ROWS","values":[["cmdr_name","Titanium","320","FALSE","2025-06-21 04:55:49"]]}"""
+    __add_mocked_http_response(json.loads(mock_scs_in_transit_data))
+    mock_scs_in_transit_data = """{"range":"'NAC Hyperspace Bypass'!A23:E23","majorDimension":"ROWS","values":[["cmdr_name","Power Generators","20","FALSE","2025-06-21 04:55:49"]]}"""
+    __add_mocked_http_response(json.loads(mock_scs_in_transit_data))
+    ACTUAL_HTTP_GET_REQUESTS.clear()
     ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
     plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_GET_REQUESTS) == 3
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+    
+    assert ACTUAL_HTTP_GET_REQUESTS.pop(0) == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'NAC Hyperspace Bypass'!A21:E21"
+    assert ACTUAL_HTTP_GET_REQUESTS.pop(0) == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'NAC Hyperspace Bypass'!A22:E22"
+    assert ACTUAL_HTTP_GET_REQUESTS.pop(0) == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'NAC Hyperspace Bypass'!A23:E23"
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
+    assert req[1] == {"requests": [{"deleteRange": {"range": {"sheetId": 1143171463, "startRowIndex": 20, "endRowIndex": 21, "startColumnIndex": 0, "endColumnIndex": 5}, "shiftDimension": "ROWS"}}, {"deleteRange": {"range": {"sheetId": 1143171463, "startRowIndex": 20, "endRowIndex": 21, "startColumnIndex": 0, "endColumnIndex": 5}, "shiftDimension": "ROWS"}}, {"deleteRange": {"range": {"sheetId": 1143171463, "startRowIndex": 20, "endRowIndex": 21, "startColumnIndex": 0, "endColumnIndex": 5}, "shiftDimension": "ROWS"}}]}
+
     assert len(plugin.this.sheet.inTransitCommodities) == 0
 
     # The one to fetch the latest in-transit data from the sheet
@@ -155,7 +232,11 @@ def test_journal_entry_Startup_LoadGame():
     ACTUAL_HTTP_GET_REQUESTS.clear()
     ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
     plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_GET_REQUESTS) == 1
+    assert ACTUAL_HTTP_GET_REQUESTS.pop(0) == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!A:E"
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
     assert len(plugin.this.sheet.inTransitCommodities) == 3
+    assert plugin.this.sheet.inTransitCommodities == {'steel': {"'Igneels Tooth'!A21:E21": 250}, 'titanium': {"'Igneels Tooth'!A22:E22": 320}, 'powergenerators': {"'Igneels Tooth'!A23:E23": 20}}
 
     pr = plugin.this.queue.get_nowait()
     assert pr
@@ -164,8 +245,26 @@ def test_journal_entry_Startup_LoadGame():
     assert pr.station == 'X7H-9KW'
     assert pr.data['clear'] == True
 
+    mock_scs_in_transit_data = """{"range":"'Igneels Tooth'!A21:E21","majorDimension":"ROWS","values":[["cmdr_name","Steel","250","FALSE","2025-06-21 04:55:49"]]}"""
+    __add_mocked_http_response(json.loads(mock_scs_in_transit_data))
+    mock_scs_in_transit_data = """{"range":"'Igneels Tooth'!A22:E22","majorDimension":"ROWS","values":[["cmdr_name","Titanium","320","FALSE","2025-06-21 04:55:49"]]}"""
+    __add_mocked_http_response(json.loads(mock_scs_in_transit_data))
+    mock_scs_in_transit_data = """{"range":"'Igneels Tooth'!A23:E23","majorDimension":"ROWS","values":[["cmdr_name","Power Generators","20","FALSE","2025-06-21 04:55:49"]]}"""
+    __add_mocked_http_response(json.loads(mock_scs_in_transit_data))
+    ACTUAL_HTTP_GET_REQUESTS.clear()
     ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
     plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_GET_REQUESTS) == 3
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+    
+    assert ACTUAL_HTTP_GET_REQUESTS.pop(0) == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!A21:E21"
+    assert ACTUAL_HTTP_GET_REQUESTS.pop(0) == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!A22:E22"
+    assert ACTUAL_HTTP_GET_REQUESTS.pop(0) == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!A23:E23"
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
+    assert req[1] == {"requests": [{"deleteRange": {"range": {"sheetId": 1223817771, "startRowIndex": 20, "endRowIndex": 21, "startColumnIndex": 0, "endColumnIndex": 5}, "shiftDimension": "ROWS"}}, {"deleteRange": {"range": {"sheetId": 1223817771, "startRowIndex": 20, "endRowIndex": 21, "startColumnIndex": 0, "endColumnIndex": 5}, "shiftDimension": "ROWS"}}, {"deleteRange": {"range": {"sheetId": 1223817771, "startRowIndex": 20, "endRowIndex": 21, "startColumnIndex": 0, "endColumnIndex": 5}, "shiftDimension": "ROWS"}}]}
+
     assert len(plugin.this.sheet.inTransitCommodities) == 0
 
 def test_journal_entry_Location():
