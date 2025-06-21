@@ -607,8 +607,9 @@ def process_item(item: PushRequest) -> None:
 
                 commodity = item.data['Type']
                 amount = int(item.data['Count'])
+                timestamp = item.data['timestamp']
                 
-                this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, inTransit=True)
+                this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, inTransit=True, timestamp=timestamp)
             case PushRequest.TYPE_CARRIER_INTRANSIT_RECALC:
                 assignedCarrierName = this.cmdrsAssignedCarrierName.get()
                 assignedCarrierId = this.sheet._get_carrier_id_from_name(assignedCarrierName)

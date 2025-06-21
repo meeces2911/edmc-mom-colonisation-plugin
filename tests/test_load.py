@@ -816,3 +816,79 @@ def test_journal_entry_ColonisationBeaconDeployed():
     assert req[1] == {"range": "'System Info'!A:A", "majorDimension": "ROWS", "values": [["M7 Sector GM-V d2-107", None, None, "cmdr_name", "In Progress"]]}
     assert len(plugin.this.sheet.systemsInProgress) == 4
     assert "M7 Sector GM-V d2-107" in plugin.this.sheet.systemsInProgress
+
+def test_journal_entry_MarketBuy_FromStation():
+    entry = {'timestamp': '2025-06-21T03:16:52Z', 'event': 'MarketBuy', 'MarketID': 3710912768, 'Type': 'steel', 'Count': 700, 'BuyPrice': 2013, 'TotalCost': 1409100}
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="Zlotrimi", station="Fraley Orbital", entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 1
+    
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CMDR_BUY
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "Fraley Orbital"
+    assert pr.data == {'timestamp': '2025-06-21T03:16:52Z', 'event': 'MarketBuy', 'MarketID': 3710912768, 'Type': 'steel', 'Count': 700, 'BuyPrice': 2013, 'TotalCost': 1409100, 'System': 'Zlotrimi'}
+
+    plugin.this.cmdrsAssignedCarrierName.set('')
+    plugin.this.killswitches[plugin.KILLSWITCH_CMDR_BUYSELL] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    plugin.this.cmdrsAssignedCarrierName.set('Igneels Tooth')
+    plugin.this.killswitches[plugin.KILLSWITCH_CMDR_BUYSELL] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    plugin.this.cmdrsAssignedCarrierName.set('Igneels Tooth')
+    plugin.this.killswitches[plugin.KILLSWITCH_CMDR_BUYSELL] = 'true'
+    mock_carrier_add_res = """{"spreadsheetId":"1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE","tableRange":"'Igneels Tooth'!A1:E20","updates":{"spreadsheetId":"1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE","updatedRange":"'Igneels Tooth'!A21:E21","updatedRows":1,"updatedColumns":5,"updatedCells":5,"updatedData":{"range":"'Igneels Tooth'!A21:E21","majorDimension":"ROWS","values":[["cmdr_name","Steel","700","FALSE","2025-06-21 04:55:49"]]}}}"""
+    __add_mocked_http_response(json.loads(mock_carrier_add_res))
+    __add_mocked_http_response(json.loads(mock_carrier_add_res))
+    mock_format_checkbox_res = """{"spreadsheetId":"1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE","replies":[{}]}"""
+    __add_mocked_http_response(json.loads(mock_format_checkbox_res))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 2
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!A:A:append?valueInputOption=USER_ENTERED&includeValuesInResponse=true"
+    assert req[1] == {"range": "'Igneels Tooth'!A:A", "majorDimension": "ROWS", "values": [["cmdr_name", "Steel", 700, False, "2025-06-21 03:16:52"]]}
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
+    assert req[1] == {"requests": [{"repeatCell": {"range": {"sheetId": 1223817771, "startRowIndex": 20, "endRowIndex": 21, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
+
+    #################################################
+    ## CMDR Buy from station (existing in-transit) ##
+    #################################################
+
+    plugin.this.cmdrsAssignedCarrierName.set('Igneels Tooth')
+    plugin.this.sheet.inTransitCommodities = {
+        'steel': {
+            "'Igneels Tooth'!A31:E31": 52,
+            "'NAC Hyperspace Bypass'!A81:E81": 70
+        },
+        'aluminium': {
+            "'NAC Hyperspace Bypass'!A82:E82": 45
+        }
+    }
+    mock_carrier_update_res = """{"spreadsheetId":"1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE","updatedRange":"'Igneels Tooth'!A31:E31","updatedRows":1,"updatedColumns":5,"updatedCells":5}"""
+    __add_mocked_http_response(json.loads(mock_carrier_update_res))
+    __add_mocked_http_response(json.loads(mock_carrier_update_res))
+    mock_format_checkbox_res = """{"spreadsheetId":"1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE","replies":[{}]}"""
+    __add_mocked_http_response(json.loads(mock_format_checkbox_res))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 2
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!A31:E31?valueInputOption=USER_ENTERED"
+    assert req[1] == {"range": "'Igneels Tooth'!A31:E31", "majorDimension": "ROWS", "values": [["cmdr_name", "Steel", (700 + 52), False, "2025-06-21 03:16:52"]]}
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
+    assert req[1] == {"requests": [{"repeatCell": {"range": {"sheetId": 1223817771, "startRowIndex": 30, "endRowIndex": 31, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
+

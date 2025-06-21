@@ -540,7 +540,7 @@ class Sheet:
         """Returns the specific commodity name thats matches the one in the spreadsheet"""
         return self.commodityNamesFromNice.get(commodity, commodity.lower())
 
-    def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int, inTransit: bool = False, system: str = None) -> None:
+    def add_to_carrier_sheet(self, sheet: str, cmdr: str, commodity: str, amount: int, inTransit: bool = False, system: str = None, timestamp: str = None) -> None:
         """Updates the carrier sheet with some cargo"""
         if not sheet or sheet == '':
             logger.error('No sheet name provided')
@@ -613,7 +613,7 @@ class Sheet:
                 return
                 
         if self.sheetFunctionality.get(sheet, {}).get('Timestamp', False):
-            bodyValue.append(self._get_datetime_string())
+            bodyValue.append(self._get_datetime_string(timestamp))
         else:
             bodyValue.append(None)
 
