@@ -734,15 +734,12 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 logger.debug('Docked at FleetCarrier, also checking for additional in-transit cargo')
                 this.latestCarrierCallsign = station
                 
-                assignedCarrierId = this.sheet._get_carrier_id_from_name(this.cmdrsAssignedCarrier.get())
-                if station != assignedCarrierId:
-                
-                    # Check for any in-transit cargo listed on the sheet
-                    # We may have had to log out to work around the FC cargo bug
-                    this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
-                    if len(state.get('Cargo', {})) == 0:
-                        logger.debug('No cargo, queuing in-transit clear')
-                        this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))  # Currently docked carrier
+                # Check for any in-transit cargo listed on the sheet
+                # We may have had to log out to work around the FC cargo bug
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, None))
+                if len(state.get('Cargo', {})) == 0:
+                    logger.debug('No cargo, queuing in-transit clear')
+                    this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))  # Currently docked carrier
                 
         case 'Location':
             logger.info(f'Location: In system {system}')
