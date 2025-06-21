@@ -357,18 +357,40 @@ def test_journal_entry_Docked():
 
 def test_journal_entry_Cargo():
     entry = { "timestamp":"2025-06-13T21:00:21Z", "event":"Cargo", "Vessel":"Ship", "Count":0 }
-    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="Zlotrimi", station="X7H-9KW", entry=entry, state=None)
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="Zlotrimi", station="Fraley Orbital", entry=entry, state=None)
 
     assert plugin.this.queue.qsize() == 1
+    
     pr = plugin.this.queue.get_nowait()
     assert pr
     assert pr.type == plugin.PushRequest.TYPE_CARRIER_INTRANSIT_RECALC
     assert pr.cmdr == monitor.monitor.cmdr
-    assert pr.station == "X7H-9KW"
+    assert pr.station == "Fraley Orbital"
     assert pr.data == {'clear': True}
 
+    plugin.this.cmdrsAssignedCarrierName.set('Igneels Tooth')
+    plugin.this.sheet.inTransitCommodities = {
+        'aluminium': {
+            "'Igneels Tooth'!A21:E21": 52
+        },
+        'steel': {
+            "'NAC Hyperspace Bypass'!A81:E81": 700
+        }
+    }
+    mock_in_transit_response = """{"range":"'Igneels Tooth'!A21:E21","majorDimension":"ROWS","values":[["cmdr_name","Aluminium","52","FALSE","2025-06-17 19:17:40"]]}"""
+    __add_mocked_http_response(json.loads(mock_in_transit_response))
+    mock_in_transit_response = """{"range":"'NAC Hyperspace Bypass'!A81:E81","majorDimension":"ROWS","values":[["cmdr_name","Steel","700","FALSE","2025-06-17 19:17:40"]]}"""
+    __add_mocked_http_response(json.loads(mock_in_transit_response))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
+    assert req[1] == {"requests": [{"deleteRange": {"range": {"sheetId": 1223817771, "startRowIndex": 20, "endRowIndex": 21, "startColumnIndex": 0, "endColumnIndex": 5}, "shiftDimension": "ROWS"}}, {"deleteRange": {"range": {"sheetId": 1143171463, "startRowIndex": 80, "endRowIndex": 81, "startColumnIndex": 0, "endColumnIndex": 5}, "shiftDimension": "ROWS"}}]}
+
     entry = { "timestamp":"2025-06-13T21:00:21Z", "event":"Cargo", "Vessel":"Ship", "Count":20 }
-    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="Zlotrimi", station="X7H-9KW", entry=entry, state=None)
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="Zlotrimi", station="Fraley Orbital", entry=entry, state=None)
 
     assert plugin.this.queue.qsize() == 0
 
