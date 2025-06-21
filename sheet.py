@@ -442,12 +442,14 @@ class Sheet:
                                 self.commodityNamesFromNice[row[1]] = row[0]    # TODO: How do we handle double ups here ? Do we care ?
                     case 1: # Carrier Range
                         for row in valueRange.get('values'):
-                            if row[0] == 'Carriers':
+                            if len(row) == 0 or row[0] == 'Carriers':
                                 continue
                             # [callsign] = <sheet name>
                             self.carrierTabNames[row[1]] = row[2]
                     case 2: # Market Range
                         for row in valueRange.get('values'):
+                            if len(row) == 0 or row[0] == 'Markets':
+                                continue
                             self.marketUpdatesSetBy[row[0]] = {
                                     'setByOwner': row[1] == 'TRUE'
                                 }
@@ -512,7 +514,7 @@ class Sheet:
         except:
             logger.error(traceback.format_exc())
 
-        self.killswitches['last updated'] = time.time()
+        self.killswitches['last updated'] = int(time.time())
 
     def populate_cmdr_data(self, cmdr: str) -> None:
         """Populate CMDR specific data on start up"""
