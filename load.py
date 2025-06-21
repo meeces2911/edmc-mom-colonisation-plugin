@@ -536,12 +536,13 @@ def process_item(item: PushRequest) -> None:
                     return
                 commodity = item.data['Type']
                 amount = int(item.data['Count']) * -1   # We're removing from the carrier
-                this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount)
+                timestamp = item.data['timestamp']
+                this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, timestamp=timestamp)
                 if this.featureAssumeCarrierUnloadToSCS.get():
                     sheetName = this.sheet.lookupRanges[this.sheet.LOOKUP_SCS_SHEET_NAME]
                     system = item.data['System']
-                    if system in this.sheet.systemsInProgress:
-                        this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount*-1, inTransit=True, system=system)
+                    if system in this.sheet.systemsInProgress or system in this.sheet.lastFiftyCompletedSystems:
+                        this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount*-1, inTransit=True, system=system, timestamp=timestamp)
                     else:
                         logger.debug(f'{system} not in list of Systems In Progress, not adding in-transit delivery to SCS sheet')
             case PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE:

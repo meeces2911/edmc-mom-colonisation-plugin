@@ -892,3 +892,88 @@ def test_journal_entry_MarketBuy_FromStation():
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
     assert req[1] == {"requests": [{"repeatCell": {"range": {"sheetId": 1223817771, "startRowIndex": 30, "endRowIndex": 31, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
 
+def test_journal_entry_MarketBuy_FromFleetCarrier():
+    assert plugin.this.sheet.systemsInProgress
+    assert plugin.this.sheet.lastFiftyCompletedSystems
+    assert len(plugin.this.sheet.lastFiftyCompletedSystems) == 50
+    assert plugin.this.sheet.lastFiftyCompletedSystems[0] == 'Bleae Thua WK-R c4-4'
+
+    entry = {'timestamp': '2025-06-21T03:16:52Z', 'event': 'MarketBuy', 'MarketID': 3710912768, 'Type': 'steel', 'Count': 700, 'BuyPrice': 2013, 'TotalCost': 1409100}
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="Bleae Thua WK-R c4-4", station="J9W-65Q", entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 1
+    
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_CMDR_BUY
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "J9W-65Q"
+    assert pr.data == {'timestamp': '2025-06-21T03:16:52Z', 'event': 'MarketBuy', 'MarketID': 3710912768, 'Type': 'steel', 'Count': 700, 'BuyPrice': 2013, 'TotalCost': 1409100, 'System': 'Bleae Thua WK-R c4-4'}
+
+    plugin.this.featureAssumeCarrierUnloadToSCS.set(False)
+    plugin.this.killswitches[plugin.KILLSWITCH_CMDR_BUYSELL] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    plugin.this.featureAssumeCarrierUnloadToSCS.set(False)
+    plugin.this.killswitches[plugin.KILLSWITCH_CMDR_BUYSELL] = 'true'
+    mock_carrier_add_res = """{"spreadsheetId":"1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE","updatedRange":"'NAC Hyperspace Bypass'!A26:E26","updatedRows":1,"updatedColumns":5,"updatedCells":5}"""
+    __add_mocked_http_response(json.loads(mock_carrier_add_res))
+    __add_mocked_http_response(json.loads(mock_carrier_add_res))
+    mock_format_checkbox_res = """{"spreadsheetId":"1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE","replies":[{}]}"""
+    __add_mocked_http_response(json.loads(mock_format_checkbox_res))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 2
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'NAC Hyperspace Bypass'!A:A:append?valueInputOption=USER_ENTERED&includeValuesInResponse=true"
+    assert req[1] == {"range": "'NAC Hyperspace Bypass'!A:A", "majorDimension": "ROWS", "values": [["cmdr_name", "Steel", -700, True, "2025-06-21 03:16:52"]]}
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
+    assert req[1] == {"requests": [{"repeatCell": {"range": {"sheetId": 1143171463, "startRowIndex": 25, "endRowIndex": 26, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
+
+    ##########################################
+    ## Assume Carrier Unload for SCS = true ##
+    ##########################################
+
+    plugin.this.featureAssumeCarrierUnloadToSCS.set(True)
+    plugin.this.killswitches[plugin.KILLSWITCH_CMDR_BUYSELL] = 'true'
+    mock_carrier_add_res = """{"spreadsheetId":"1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE","updatedRange":"'NAC Hyperspace Bypass'!A26:E26","updatedRows":1,"updatedColumns":5,"updatedCells":5}"""
+    __add_mocked_http_response(json.loads(mock_carrier_add_res))
+    __add_mocked_http_response(json.loads(mock_carrier_add_res))
+    mock_format_checkbox_res = """{"spreadsheetId":"1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE","replies":[{}]}"""
+    __add_mocked_http_response(json.loads(mock_format_checkbox_res))
+    mock_carrier_add_res = """{"spreadsheetId":"1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE","updatedRange":"'SCS Offload'!A359:E359","updatedRows":1,"updatedColumns":5,"updatedCells":5}"""
+    __add_mocked_http_response(json.loads(mock_carrier_add_res))
+    __add_mocked_http_response(json.loads(mock_carrier_add_res))
+    __add_mocked_http_response(json.loads(mock_carrier_add_res))  # TODO: What why is this extra one required ?
+    mock_format_checkbox_res = """{"spreadsheetId":"1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE","replies":[{}]}"""
+    __add_mocked_http_response(json.loads(mock_format_checkbox_res))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 4
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'NAC Hyperspace Bypass'!A:A:append?valueInputOption=USER_ENTERED&includeValuesInResponse=true"
+    assert req[1] == {"range": "'NAC Hyperspace Bypass'!A:A", "majorDimension": "ROWS", "values": [["cmdr_name", "Steel", -700, True, "2025-06-21 03:16:52"]]}
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
+    assert req[1] == {"requests": [{"repeatCell": {"range": {"sheetId": 1143171463, "startRowIndex": 25, "endRowIndex": 26, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'SCS Offload'!A:A:append?valueInputOption=USER_ENTERED&includeValuesInResponse=true"
+    assert req[1] == {"range": "'SCS Offload'!A:A", "majorDimension": "ROWS", "values": [["Steel", "Bleae Thua WK-R c4-4", 700, False, "2025-06-21 03:16:52"]]}
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
+    assert req[1] == {"requests": [{"repeatCell": {"range": {"sheetId": 565128439, "startRowIndex": 358, "endRowIndex": 359, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
+
+    assert plugin.this.sheet.inTransitCommodities == {
+        'steel': {
+            "'SCS Offload'!A359:E359": 700
+        }
+    }
