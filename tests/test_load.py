@@ -168,7 +168,7 @@ def test_journal_entry_Startup_LoadGame():
     ## Docked to same carrier as assigned ##
     ########################################
 
-    plugin.this.cmdrsAssignedCarrier.set('Igneels Tooth')
+    plugin.this.cmdrsAssignedCarrierName.set('Igneels Tooth')
     entry['StationType'] = 'FleetCarrier'
     entry['StationName'] = 'X7H-9KW'
     state = {'Cargo': defaultdict(), 'CargoCapacity': 512}
@@ -215,7 +215,7 @@ def test_journal_entry_Startup_LoadGame():
     ## Docked to DIFFERENT carrier as assigned ##
     #############################################
 
-    plugin.this.cmdrsAssignedCarrier.set('NAC Hyperspace Bypass')
+    plugin.this.cmdrsAssignedCarrierName.set('NAC Hyperspace Bypass')
     entry['StationType'] = 'FleetCarrier'
     entry['StationName'] = 'X7H-9KW'
     state = {'Cargo': defaultdict(), 'CargoCapacity': 512}

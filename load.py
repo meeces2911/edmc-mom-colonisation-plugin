@@ -83,7 +83,7 @@ class This:
         self.latestCarrierCallsign: str | None = None
         self.myCarrierCallsign: str | None = None
         self.cargoCapacity: int = 0
-        self.cmdrsAssignedCarrier: tk.StringVar = tk.StringVar(value=config.get_str(CONFIG_ASSIGNED_CARRIER))
+        self.cmdrsAssignedCarrierName: tk.StringVar = tk.StringVar(value=config.get_str(CONFIG_ASSIGNED_CARRIER))
         self.nextSCSReconcileTime: int = int(time.time())
         self.dataPopulatedForSystems: list[str] = []
 
@@ -147,7 +147,7 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
 
     logger.info('Settings opened, pausing worker thread')
     this.pauseWork = True
-    this.cmdrsAssignedCarrier.set(config.get_str(CONFIG_ASSIGNED_CARRIER))   # Refetch this from the config db, in case its changed since start up
+    this.cmdrsAssignedCarrierName.set(config.get_str(CONFIG_ASSIGNED_CARRIER))   # Refetch this from the config db, in case its changed since start up
 
     frame: tk.Frame = nb.Frame(parent)
     frame.columnconfigure(1, weight=1)
@@ -195,7 +195,7 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
     with row as cur_row:
         nb.Label(frame, text='Currently Assigned Carrier').grid(row=cur_row, column=0, padx=PADX, pady=PADY, sticky=tk.W)
         nb.OptionMenu(
-            frame, this.cmdrsAssignedCarrier, '', *this.sheet.carrierTabNames.values()
+            frame, this.cmdrsAssignedCarrierName, '', *this.sheet.carrierTabNames.values()
         ).grid(row=cur_row, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
 
     ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row.get(), columnspan=4, padx=PADX, pady=PADY, sticky=tk.EW)
@@ -256,7 +256,7 @@ def prefs_changed(cmdr: str | None, is_beta: bool) -> None:
 
     # Save settings to DB
     config.set(CONFIG_SHEET_NAME, this.configSheetName.get())
-    config.set(CONFIG_ASSIGNED_CARRIER, this.cmdrsAssignedCarrier.get())
+    config.set(CONFIG_ASSIGNED_CARRIER, this.cmdrsAssignedCarrierName.get())
     config.set(CONFIG_UI_PLUGIN_STATUS, this.showPluginStatus.get())
     config.set(CONFIG_UI_SHOW_CARRIER, this.showAssignedCarrier.get())
     config.set(CONFIG_FEAT_TRACK_DELIVERY, this.featureTrackDelivery.get())
@@ -307,7 +307,7 @@ def _add_carrier_widget() -> None:
         with row as cur_row:
             tk.Label(frame, text="Carrier:").grid(row=cur_row, column=0, sticky=tk.W)
             dropdown = tk.OptionMenu(
-                frame, this.cmdrsAssignedCarrier, '', *this.sheet.carrierTabNames.values(), command=lambda value: config.set(CONFIG_ASSIGNED_CARRIER, value)
+                frame, this.cmdrsAssignedCarrierName, '', *this.sheet.carrierTabNames.values(), command=lambda value: config.set(CONFIG_ASSIGNED_CARRIER, value)
             )
             dropdown.grid(row=cur_row, column=1, sticky=tk.W)
             dropdown.configure(background=ttk.Style().lookup('TMenu', 'background'), highlightthickness=0, borderwidth=0)
@@ -458,7 +458,7 @@ def initial_startup() -> None:
     this.sheet.populate_initial_settings()
     this.killswitches = this.sheet.killswitches
     this.sheet.populate_cmdr_data(monitor.cmdr)
-    this.cmdrsAssignedCarrier.set(config.get_str(CONFIG_ASSIGNED_CARRIER))
+    this.cmdrsAssignedCarrierName.set(config.get_str(CONFIG_ASSIGNED_CARRIER))
     
     # Record the fact that we're using the plugin
     this.sheet.record_plugin_usage(monitor.cmdr, VERSION)
@@ -509,9 +509,9 @@ def process_item(item: PushRequest) -> None:
                 commodity = item.data['Type']
                 amount = int(item.data['Count'])
 
-                assignedCarrier = this.cmdrsAssignedCarrier.get()
-                if not sheetName and assignedCarrier:
-                    sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(assignedCarrier))
+                assignedCarrierName = this.cmdrsAssignedCarrierName.get()
+                if not sheetName and assignedCarrierName:
+                    sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(assignedCarrierName))
                     logger.info(f'Carrier not known, assuming in-transit for {sheetName}')
                     inTransit = True
                     amount = amount * -1    # Selling, so carrier should 'loose' this amount (even, if it never really gained it)
@@ -594,12 +594,12 @@ def process_item(item: PushRequest) -> None:
                 this.sheet.reconcile_carrier_market(item.data)
             case PushRequest.TYPE_CMDR_BUY:
                 # This is really only split from the carrier one in case we want to do different things... but could always be merged
-                assignedCarrier = this.cmdrsAssignedCarrier.get()
-                if not assignedCarrier:
+                assignedCarrierName = this.cmdrsAssignedCarrierName.get()
+                if not assignedCarrierName:
                     logger.info('No assigned carrier, ignoring')
                     return
 
-                sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(assignedCarrier))
+                sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(assignedCarrierName))
                 logger.info(f'Processing CMDR Buy Request, assuming in-transit for {sheetName}')
                 if this.killswitches.get(KILLSWITCH_CMDR_BUYSELL, 'true') != 'true':
                     logger.warning('DISABLED by killswitch, ignoring')
@@ -610,17 +610,27 @@ def process_item(item: PushRequest) -> None:
                 
                 this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, inTransit=True)
             case PushRequest.TYPE_CARRIER_INTRANSIT_RECALC:
-                assignedCarrier = this.cmdrsAssignedCarrier.get()
+                assignedCarrierName = this.cmdrsAssignedCarrierName.get()
+                assignedCarrierId = this.sheet._get_carrier_id_from_name(assignedCarrierName)
                 resetCargo = False
-                logger.info(f'Processing Carrier In-Transit Recalculate request for {item.station or assignedCarrier}')
+                logger.info(f'Processing Carrier In-Transit Recalculate request for {item.station or assignedCarrierName}')
                 
+                if item.station and item.station == assignedCarrierId:
+                    logger.info('Docked to assigned carrier, ignoring')
+                    return
+
                 if item.data:
                     resetCargo = bool(item.data.get('clear', False))
-                if not sheetName and assignedCarrier:
-                    sheetName = this.sheet.carrierTabNames.get(this.sheet._get_carrier_id_from_name(assignedCarrier))
+                
+                # Station was null, use the CMDRs assigned carrier instead
+                if not sheetName and assignedCarrierName:
+                    sheetName = this.sheet.carrierTabNames.get(assignedCarrierId)
+
+                # No/Invalid sheet found, bailing
                 if not sheetName:
                     logger.info('No assigned carrier, ignoring')
                     return
+                
                 this.sheet.recalculate_in_transit(sheetName, item.cmdr, clear=resetCargo)
             case PushRequest.TYPE_SCS_SYSTEM_ADD:
                 logger.info('Processing SCS System Add request')
