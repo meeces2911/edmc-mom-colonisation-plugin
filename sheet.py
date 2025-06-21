@@ -56,6 +56,9 @@ class Sheet:
         self.commodityNamesFromNice: dict[str, str] = {}
         self.sheetFunctionality: dict[str, dict[str, bool]] = {}
         self.systemsInProgress: list[str] = []
+        self.lastFiftyCompletedSystems: list[str] = []
+        self.highestKnownSystemRow: int = 1
+
         self.inTransitCommodities: dict[str, dict[str, int]] = {}
         """
             This ones needs a bit of explaining:
@@ -468,12 +471,16 @@ class Sheet:
 
         # Now get anything that relies on the lookups being set
         try:
-            systemsInProgressRange = self.lookupRanges[self.LOOKUP_SYSTEMS_IN_PROGRESS]
+            systemsInProgressRange = self.lookupRanges[self.LOOKUP_SYSTEMS_IN_PROGRESS] or 'Data!BH2:BH30'
+            systemInfoSheetName = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
+            startRow = max(self.highestKnownSystemRow-50, 0) + 1
+            systemsCompletedRange = f"'{systemInfoSheetName}'!A{startRow}:A"
 
-            data = self.fetch_data_bulk([systemsInProgressRange])
+            data = self.fetch_data_bulk([systemsInProgressRange, systemsCompletedRange])
             logger.debug(data)
             
             self.systemsInProgress = []
+            self.lastFiftyCompletedSystems = []
 
             rangeIdx = 0
             for valueRange in data.get('valueRanges'):
@@ -488,6 +495,19 @@ class Sheet:
                                 continue
                             if not row[0] in self.systemsInProgress:
                                 self.systemsInProgress.append(row[0])
+                    case 1: # Systems Completed
+                        values = valueRange.get('values')
+                        logger.critical(values)
+                        count = 0
+                        self.highestKnownSystemRow = (startRow-1) + len(values)
+                        for row in reversed(values):
+                            if count == 50:
+                                break
+                            if len(row) == 0 or row[0] == 'System':
+                                continue
+                            if not row[0] in self.lastFiftyCompletedSystems:
+                                self.lastFiftyCompletedSystems.append(row[0])
+                                count += 1
                 rangeIdx += 1
         except:
             logger.error(traceback.format_exc())
@@ -548,8 +568,9 @@ class Sheet:
         
         logger.debug(f'Building Carrier Sheet Message (sheet:{sheet} inTransit:{inTransit} commodity:{commodity} amount:{amount})')
         range = f"'{sheet}'!A:A"
-        
-        if sheet != self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME]:
+        sheetIsSCSOffload = sheet == self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME]
+
+        if not sheetIsSCSOffload:
             bodyValue = [
                 cmdr,
                 self.commodity_type_name_to_dropdown(commodity),
@@ -563,7 +584,7 @@ class Sheet:
             ]
         update = False
 
-        if self.sheetFunctionality.get(sheet, {}).get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
+        if self.sheetFunctionality.get(sheet, {}).get('Delivery', False) and (sheetIsSCSOffload or config.get_bool(CONFIG_FEAT_TRACK_DELIVERY)):
             if inTransit or amount > 0:
                 logger.debug(f'Checking for existing row for {commodity} in {self.inTransitCommodities}')
                 existingValue = self.inTransitCommodities.get(commodity, None)
@@ -643,7 +664,7 @@ class Sheet:
             response = self.update_data(range, body)
         
         # Now format the row we just created
-        if self.sheetFunctionality[sheet].get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY):
+        if self.sheetFunctionality[sheet].get('Delivery', False) and (sheetIsSCSOffload or config.get_bool(CONFIG_FEAT_TRACK_DELIVERY)):
             logger.debug('Formatting Delivery cell')
             updates = response.get('updates', response)
             updatedRange = updates.get('updatedRange')
@@ -1149,22 +1170,27 @@ class Sheet:
     def add_in_progress_scs_system(self, system: str, cmdr: str = None) -> None:
         """Adds a new system to the System Info sheet"""
         logger.debug('Building New SCS System Message')
-        sheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
-        range = f"'{sheet}'!A:A"
-        data = self.fetch_data(range)
-        logger.debug(data)
-
         found = False
-        for row in data['values']:
-            if row[0] == system:
-                # Already been added by someone else
-                found = True
-                break
         
+        if system in self.lastFiftyCompletedSystems:
+            found = True
+        else:
+            sheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
+            range = f"'{sheet}'!A{self.highestKnownSystemRow}:A"
+            data = self.fetch_data(range)
+            logger.debug(data)
+            
+            for row in data['values']:
+                if row[0] == system:
+                    # Already been added by someone else
+                    found = True
+                    break
+            
         if found:
             logger.info('System already exists on System Info sheet, skipping')
             return
         
+        range = f"'{sheet}'!A:A"
         body = {
             'range': range,
             'majorDimension': 'ROWS',
