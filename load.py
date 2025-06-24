@@ -542,7 +542,8 @@ def process_item(item: PushRequest) -> None:
                     sheetName = this.sheet.lookupRanges[this.sheet.LOOKUP_SCS_SHEET_NAME]
                     system = item.data['System']
                     if system in this.sheet.systemsInProgress or system in this.sheet.lastFiftyCompletedSystems:
-                        this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount*-1, inTransit=True, system=system, timestamp=timestamp)
+                        latestSCSSystem = this.sheet.lastFiftyCompletedSystems[0]   # This won't always be correct, but for now it should be more often than not
+                        this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount*-1, inTransit=True, system=latestSCSSystem, timestamp=timestamp)
                     else:
                         logger.debug(f'{system} not in list of Systems In Progress, not adding in-transit delivery to SCS sheet')
             case PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE:

@@ -499,7 +499,7 @@ class Sheet:
                                 self.systemsInProgress.append(row[0])
                     case 1: # Systems Completed
                         values = valueRange.get('values')
-                        logger.critical(values)
+                        #logger.critical(values)
                         count = 0
                         self.highestKnownSystemRow = (startRow-1) + len(values)
                         for row in reversed(values):
