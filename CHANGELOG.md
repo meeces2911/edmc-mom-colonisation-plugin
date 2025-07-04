@@ -3,11 +3,11 @@
 ## 1.4.0
 
 ### What's Changed
-* Changed how in-transit cargo is checked on start-up. Both the (last) assigned carrier and the currently docked one will be checked, and eronous cargo cleared
+* Changed how in-transit cargo is checked on start-up. Both the (last) assigned carrier and the currently docked one will be checked, and erroneous cargo cleared
 * The last 50 completed systems are kept track of. This allows for the SCS Offload sheet to be correctly updated with in-transit cargo when buying from carriers in previously completed systems
 
 ### Fixed
-* Any entry added to the SCS Offload sheet will now always have the Delivered checbox field set, regardless of the users preference
+* Any entry added to the SCS Offload sheet will now always have the Delivered checkbox field set, regardless of the users preference
   * Delivery Tracking is still (currently) optional for carrier deliveries. This will be removed in a future release
 
 ## 1.3.5
