@@ -521,7 +521,7 @@ class Sheet:
         # This shouldn't be called more than once, as we just want to pre-populate some stuff after a shutdown
         try:
             systemInfoSheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
-            cmdrInfoRange = self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'G:I'
+            cmdrInfoRange = self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'H:J'
 
             data = self.fetch_data_bulk([f'{systemInfoSheet}!{cmdrInfoRange}'])
             if not data or len(data) == 0:
@@ -707,7 +707,7 @@ class Sheet:
     def update_carrier_location(self, sheet: str, system: str) -> None:
         """Update the carrier sheet with its current location"""
         logger.debug('Building Carrier Location Message')
-        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_LOCATION] or 'G1'}"
+        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_LOCATION] or 'I1'}"
         body = {
             'range': range,
             'majorDimension': 'ROWS',
@@ -723,7 +723,7 @@ class Sheet:
     def update_carrier_jump_location(self, sheet: str, system: str, departTime: str | None) -> None:
         """Update the carrier sheet with its planned jump"""
         logger.debug("Building Carrier Jump Message")
-        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_JUMP_LOC] or 'G2'}"
+        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_JUMP_LOC] or 'I2'}"
         ts = ''
         if departTime:
             ts = self._get_datetime_string(departTime)
@@ -766,7 +766,7 @@ class Sheet:
                     amount += int(row[2])
 
         # Find our commodity in the list
-        buyOrders = self.fetch_data(f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_BUY_ORDERS] or 'F3:H22'}")
+        buyOrders = self.fetch_data(f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_BUY_ORDERS] or 'H3:J22'}")
         logger.debug(f'Old: {buyOrders}')
         if len(buyOrders) == 0:
             logger.error('No Buy Order table found, bailing')
@@ -965,7 +965,7 @@ class Sheet:
         """Updates anything we wnat to track about the current CMDR"""
         logger.debug('Building CMDR Update Message')
         sheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
-        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'G:I'}"
+        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'H:J'}"
         data = self.fetch_data(range)
         logger.debug(data)
 
@@ -1010,7 +1010,7 @@ class Sheet:
         logger.debug('Building Reconcile Carrier message')
         sheet = f"'{self.carrierTabNames[carrier]}'"
         
-        buyOrders = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_BUY_ORDERS] or 'F3:H22'}")
+        buyOrders = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_BUY_ORDERS] or 'H3:J22'}")
         logger.debug(buyOrders)
         if len(buyOrders) == 0:
             logger.error('No Buy Order data found, bailing')
@@ -1054,7 +1054,7 @@ class Sheet:
                         row[1] = int(order['total']) + startingInventoryAmounts.get(commodityName, 0)
 
         # Work out how much the spreadsheet thinks is on the ship
-        sumCargo = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_SUM_CARGO] or 'AE:AF'}")
+        sumCargo = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_SUM_CARGO] or 'AA:AB'}")
         logger.debug(sumCargo)
         if len(sumCargo) == 0:
             logger.error('No Sum Cargo data found, bailing')
