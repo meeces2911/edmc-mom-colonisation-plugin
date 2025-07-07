@@ -821,7 +821,7 @@ class Sheet:
         range = f"'{sheet}'!A:A"
         update = False
 
-        deliveryEnabled = self.sheetFunctionality.get(sheet, {}).get('Delivery', False) and config.get_bool(CONFIG_FEAT_TRACK_DELIVERY)
+        deliveryEnabled = self.sheetFunctionality.get(sheet, {}).get('Delivery', False)
         if deliveryEnabled:
             logger.debug('Checking for intransit cargo')
             inTransitCargo = self.inTransitCommodities.get(commodity, None)
