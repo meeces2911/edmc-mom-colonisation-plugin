@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.4.1
+
+### Fixed
+* Fixed another instance of Delivery Tracking on the SCS Offload sheet not working due to checking user preferences (and missed from the previous update)
+
 ## 1.4.0
 
 ### What's Changed

@@ -14,7 +14,7 @@ This [EDMC](https://github.com/EDCD/EDMarketConnector) plugin is designed to hel
 * Automatically adds an entry to the relevant carrier sheet when buying or selling something from/to the carrier
 * Automatically adds an entry to the SCS Offload sheet when 'selling' cargo the the System Colonisation Ship
 * Automatically keeps CMDR Cargo capacity on the System Info tab up to date
-* [1.2.0] () Automatically adds an entry to your the selected carrier's sheet when buying a commodity
+* [1.2.0] Automatically adds an entry to your the selected carrier's sheet when buying a commodity
 * [1.2.0] Automaticlaly updates the System Info sheet when docking
 * [1.3.0] Automatically adds correction entries to the SCS Offload sheet when docked to the SCS to keep the sheet closer insync with whats happening in game
 * [1.3.0] Automatically adds an entry to the System Info sheet when deploying a Beacon
@@ -59,7 +59,7 @@ This [EDMC](https://github.com/EDCD/EDMarketConnector) plugin is designed to hel
 1. Configure EDMC with some required settings
    - On the Configuration tab, ensure **Enable Fleet Carrier CAPI Queries** is selected (important for Carrier owners)
    - On the Output tab, ensure **Automatically update on docking** is selected
-1. On the Plugins tab ios a button to quickly open the EDMC plugins folder - click that 😉 (or at the very least, note the plugins folder path)
+1. On the Plugins tab is a button to quickly open the EDMC plugins folder - click that 😉 (or at the very least, note the plugins folder path)
    > There are some reports of this not being populted, or the button not working on Linux/Steam Deck. See EDMCs [More-Info](https://github.com/EDCD/EDMarketConnector/wiki/Plugins#more-info) for the default locations
 1. Download the latest plugin from [Releases](https://github.com/meeces2911/edmc-mom-colonisation-plugin/releases/latest)
 1. Extract the zip file to the location noted in step 3
