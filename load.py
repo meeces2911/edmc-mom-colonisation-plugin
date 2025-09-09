@@ -73,6 +73,7 @@ class This:
         
         self.enabled: bool = True
         self.killswitches: dict[str, str] = {}
+        self.upgradeMsgShown: bool = False
         
         self.requests_session : requests.Session = requests.Session()
         self.requests_session.headers['User-Agent'] = user_agent
@@ -283,13 +284,16 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     this.uiFrame = tk.Frame(parent)
     this.uiFrameRows = AutoInc(start=0)
 
-    _add_status_widget()
-    _add_carrier_widget()
+    w1 = _add_status_widget()
+    w2 = _add_carrier_widget()
+
+    #if w1 or w2:
+    #    ttk.Separator(this.uiFrame, orient=tk.HORIZONTAL).grid(row=100, columnspan=4, padx=1, pady=1, sticky=tk.EW)
 
     theme.update(this.uiFrame)
     return this.uiFrame
 
-def _add_status_widget() -> None:
+def _add_status_widget() -> bool:
     frame = this.uiFrame
     row = this.uiFrameRows
 
@@ -297,9 +301,11 @@ def _add_status_widget() -> None:
         with row as cur_row:
             tk.Label(frame, text='Status:', ).grid(row=cur_row, column=0, sticky=tk.W)
             this.pluginStatusIcon = tk.Label(frame, image=this._IMG_UNKNOWN)
-            this.pluginStatusIcon.grid(row=cur_row, column=1, sticky=tk.W)    
+            this.pluginStatusIcon.grid(row=cur_row, column=1, sticky=tk.W)
+        return True
+    return False
 
-def _add_carrier_widget() -> None:
+def _add_carrier_widget() -> bool:
     frame = this.uiFrame
     row = this.uiFrameRows
 
@@ -312,6 +318,8 @@ def _add_carrier_widget() -> None:
             dropdown.grid(row=cur_row, column=1, sticky=tk.W)
             dropdown.configure(background=ttk.Style().lookup('TMenu', 'background'), highlightthickness=0, borderwidth=0)
             dropdown['menu'].configure(background=ttk.Style().lookup('TMenu', 'background'))        # TODO: Come back later and continue bashing this until it works
+            return True
+        return False
 
 def _update_status_icon(newIcon: tk.PhotoImage) -> None:
     """Updates the Plugin Status icon if its currently viewable"""
@@ -488,6 +496,14 @@ def process_kill_siwtches() -> bool:
         if semantic_version.Version(VERSION) < semantic_version.Version(this.killswitches.get('minimum version')):
             logger.warning(f'Killswitch: Minimum Version ({this.killswitches.get("minimum version")}) is higher than us')
             plug.show_error('MoM: Upgrade Required')
+            if not this.upgradeMsgShown:
+                restart_box = tk.messagebox.Message(
+                    title='Upgrade Required',
+                    message='New version of MoM: Colonisation Tracker availabe. Spreadsheet updating disabled',
+                    type=tk.messagebox.OK
+                )
+                restart_box.show()
+                this.upgradeMsgShown = True
             return True
         
     return False
