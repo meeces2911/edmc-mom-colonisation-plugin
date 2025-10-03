@@ -977,3 +977,162 @@ def test_journal_entry_MarketBuy_FromFleetCarrier():
             "'SCS Offload'!A359:E359": 700
         }
     }
+
+def test_journal_entry_CarrierTradeOrder_BuyOrder():
+    plugin.this.latestCarrierCallsign = "X7H-9KW"
+    plugin.this.myCarrierCallsign = "X7H-9KW"
+    plugin.this.myCarrierId = 3707348992
+
+    entry = { 'timestamp': '2025-09-26T09:40:02Z', 'event': 'CarrierTradeOrder', 'CarrierID': 3707348992, 'CarrierType': 'FleetCarrier', 'BlackMarket': False, 'Commodity': 'nonlethalweapons', 'Commodity_Localised': 'Non-Lethal Weapons', 'PurchaseOrder': 9, 'Price': 1848 }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="", station="", entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 1
+    
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == { 'timestamp': '2025-09-26T09:40:02Z', 'event': 'CarrierTradeOrder', 'CarrierID': 3707348992, 'CarrierType': 'FleetCarrier', 'BlackMarket': False, 'Commodity': 'nonlethalweapons', 'Commodity_Localised': 'Non-Lethal Weapons', 'PurchaseOrder': 9, 'Price': 1848 }
+
+    # Disabled by killswitch
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_BUYSELL_ORDER] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    # Buy Order Adjustment - disabled
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_BUYSELL_ORDER] = 'true'
+    plugin.this.sheet.sheetFunctionality['Igneels Tooth'].setdefault('Buy Order Adjustment', False)
+    mock_carrier_buy_order_table = """{"range":"'Igneels Tooth'!H3:J22","majorDimension":"ROWS","values":[["Commodity","Buy Order","Demand"],["Aluminium","543","491"],["Ceramic Composites","552","539"],["CMM Composite","4816","2726"],["Computer Components","65","62"],["Copper","257","245"],["Food Cartridges","100","95"],["Fruit and Vedge","53","50"],["Insulating Membrane","371","345"],["Liquid Oxygen","1902","1717"],["Medical Diagnostic Equipment","13","13"],["Non-Lethal Weapons","9001","9001"],["Polymers","555","506"],["Power Generators","20","20"],["Semiconductors","72","70"],["Steel","7053","0"],["Superconductors","119","115"],["Titanium","5847","0"],["Water","789","744"],["Water Purifiers","40","37"]]}"""
+    __add_mocked_http_response(json.loads(mock_carrier_buy_order_table))
+    __add_mocked_http_response(json.loads(mock_carrier_buy_order_table))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!H3:J22?valueInputOption=USER_ENTERED"
+    assert req[1] == {"range": "'Igneels Tooth'!H3:J22", "majorDimension": "ROWS", "values": [["Commodity", "Buy Order", None], ["Aluminium", "543", None], ["Ceramic Composites", "552", None], ["CMM Composite", "4816", None], ["Computer Components", "65", None], ["Copper", "257", None], ["Food Cartridges", "100", None], ["Fruit and Vedge", "53", None], ["Insulating Membrane", "371", None], ["Liquid Oxygen", "1902", None], ["Medical Diagnostic Equipment", "13", None], ["Non-Lethal Weapons", 9, None], ["Polymers", "555", None], ["Power Generators", "20", None], ["Semiconductors", "72", None], ["Steel", "7053", None], ["Superconductors", "119", None], ["Titanium", "5847", None], ["Water", "789", None], ["Water Purifiers", "40", None]]}
+
+    # Buy Order Adjustment - enabled
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_BUYSELL_ORDER] = 'true'
+    plugin.this.sheet.sheetFunctionality['Igneels Tooth'].setdefault('Buy Order Adjustment', True)
+    mock_carrier_starting_inventory = """{"range":"'Igneels Tooth'!A1:C20","majorDimension":"ROWS","values":[["CMDR","Commodity","Units"],["Starting Inventory","Aluminium","52"],["Starting Inventory","Ceramic Composites","13"],["Starting Inventory","CMM Composite","83"],["Starting Inventory","Computer Components","2"],["Starting Inventory","Copper",""],["Starting Inventory","Food Cartridges","4"],["Starting Inventory","Fruit and Vedge","1"],["Starting Inventory","Insulating Membrane","7"],["Starting Inventory","Liquid Oxygen","24"],["Starting Inventory","Medical Diagnostic Equipment","0"],["Starting Inventory","Non-Lethal Weapons","4"],["Starting Inventory","Polymers","49"],["Starting Inventory","Power Generators",""],["Starting Inventory","Semiconductors","3"],["Starting Inventory","Steel","294"],["Starting Inventory","Superconductors","6"],["Starting Inventory","Titanium","98"],["Starting Inventory","Water","32"],["Starting Inventory","Water Purifiers",""]]}"""
+    __add_mocked_http_response(json.loads(mock_carrier_starting_inventory))
+    mock_carrier_buy_order_table = """{"range":"'Igneels Tooth'!H3:J22","majorDimension":"ROWS","values":[["Commodity","Buy Order","Demand"],["Aluminium","543","491"],["Ceramic Composites","552","539"],["CMM Composite","4816","2726"],["Computer Components","65","62"],["Copper","257","245"],["Food Cartridges","100","95"],["Fruit and Vedge","53","50"],["Insulating Membrane","371","345"],["Liquid Oxygen","1902","1717"],["Medical Diagnostic Equipment","13","13"],["Non-Lethal Weapons","9001","9001"],["Polymers","555","506"],["Power Generators","20","20"],["Semiconductors","72","70"],["Steel","7053","0"],["Superconductors","119","115"],["Titanium","5847","0"],["Water","789","744"],["Water Purifiers","40","37"]]}"""
+    __add_mocked_http_response(json.loads(mock_carrier_buy_order_table))
+    __add_mocked_http_response(json.loads(mock_carrier_buy_order_table))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!H3:J22?valueInputOption=USER_ENTERED"
+    assert req[1] == {"range": "'Igneels Tooth'!H3:J22", "majorDimension": "ROWS", "values": [["Commodity", "Buy Order", None], ["Aluminium", "543", None], ["Ceramic Composites", "552", None], ["CMM Composite", "4816", None], ["Computer Components", "65", None], ["Copper", "257", None], ["Food Cartridges", "100", None], ["Fruit and Vedge", "53", None], ["Insulating Membrane", "371", None], ["Liquid Oxygen", "1902", None], ["Medical Diagnostic Equipment", "13", None], ["Non-Lethal Weapons", 13, None], ["Polymers", "555", None], ["Power Generators", "20", None], ["Semiconductors", "72", None], ["Steel", "7053", None], ["Superconductors", "119", None], ["Titanium", "5847", None], ["Water", "789", None], ["Water Purifiers", "40", None]]}
+
+def test_journal_entry_CarrierTradeOrder_SellOrder():
+    plugin.this.latestCarrierCallsign = "X7H-9KW"
+    plugin.this.myCarrierCallsign = "X7H-9KW"
+    plugin.this.myCarrierId = 3707348992
+
+    entry = { 'timestamp': '2025-09-26T09:40:02Z', 'event': 'CarrierTradeOrder', 'CarrierID': 3707348992, 'CarrierType': 'FleetCarrier', 'BlackMarket': False, 'Commodity': 'nonlethalweapons', 'Commodity_Localised': 'Non-Lethal Weapons', 'SaleOrder': 13, 'Price': 1848 }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="", station="", entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 1
+    
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == { 'timestamp': '2025-09-26T09:40:02Z', 'event': 'CarrierTradeOrder', 'CarrierID': 3707348992, 'CarrierType': 'FleetCarrier', 'BlackMarket': False, 'Commodity': 'nonlethalweapons', 'Commodity_Localised': 'Non-Lethal Weapons', 'SaleOrder': 13, 'Price': 1848 }
+
+    # Disabled by killswitch
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_BUYSELL_ORDER] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    # Buy Order Adjustment - disabled
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_BUYSELL_ORDER] = 'true'
+    plugin.this.sheet.sheetFunctionality['Igneels Tooth'].setdefault('Buy Order Adjustment', False)
+    mock_carrier_buy_order_table = """{"range":"'Igneels Tooth'!H3:J22","majorDimension":"ROWS","values":[["Commodity","Buy Order","Demand"],["Aluminium","543","491"],["Ceramic Composites","552","539"],["CMM Composite","4816","2726"],["Computer Components","65","62"],["Copper","257","245"],["Food Cartridges","100","95"],["Fruit and Vedge","53","50"],["Insulating Membrane","371","345"],["Liquid Oxygen","1902","1717"],["Medical Diagnostic Equipment","13","13"],["Non-Lethal Weapons","9001","9001"],["Polymers","555","506"],["Power Generators","20","20"],["Semiconductors","72","70"],["Steel","7053","0"],["Superconductors","119","115"],["Titanium","5847","0"],["Water","789","744"],["Water Purifiers","40","37"]]}"""
+    __add_mocked_http_response(json.loads(mock_carrier_buy_order_table))
+    __add_mocked_http_response(json.loads(mock_carrier_buy_order_table))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!H3:J22?valueInputOption=USER_ENTERED"
+    assert req[1] == {"range": "'Igneels Tooth'!H3:J22", "majorDimension": "ROWS", "values": [["Commodity", "Buy Order", None], ["Aluminium", "543", None], ["Ceramic Composites", "552", None], ["CMM Composite", "4816", None], ["Computer Components", "65", None], ["Copper", "257", None], ["Food Cartridges", "100", None], ["Fruit and Vedge", "53", None], ["Insulating Membrane", "371", None], ["Liquid Oxygen", "1902", None], ["Medical Diagnostic Equipment", "13", None], ["Non-Lethal Weapons", "", None], ["Polymers", "555", None], ["Power Generators", "20", None], ["Semiconductors", "72", None], ["Steel", "7053", None], ["Superconductors", "119", None], ["Titanium", "5847", None], ["Water", "789", None], ["Water Purifiers", "40", None]]}
+
+    # Buy Order Adjustment - enabled
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_BUYSELL_ORDER] = 'true'
+    plugin.this.sheet.sheetFunctionality['Igneels Tooth'].setdefault('Buy Order Adjustment', True)
+    mock_carrier_starting_inventory = """{"range":"'Igneels Tooth'!A1:C20","majorDimension":"ROWS","values":[["CMDR","Commodity","Units"],["Starting Inventory","Aluminium","52"],["Starting Inventory","Ceramic Composites","13"],["Starting Inventory","CMM Composite","83"],["Starting Inventory","Computer Components","2"],["Starting Inventory","Copper",""],["Starting Inventory","Food Cartridges","4"],["Starting Inventory","Fruit and Vedge","1"],["Starting Inventory","Insulating Membrane","7"],["Starting Inventory","Liquid Oxygen","24"],["Starting Inventory","Medical Diagnostic Equipment","0"],["Starting Inventory","Non-Lethal Weapons","13"],["Starting Inventory","Polymers","49"],["Starting Inventory","Power Generators",""],["Starting Inventory","Semiconductors","3"],["Starting Inventory","Steel","294"],["Starting Inventory","Superconductors","6"],["Starting Inventory","Titanium","98"],["Starting Inventory","Water","32"],["Starting Inventory","Water Purifiers",""]]}"""
+    __add_mocked_http_response(json.loads(mock_carrier_starting_inventory))
+    mock_carrier_buy_order_table = """{"range":"'Igneels Tooth'!H3:J22","majorDimension":"ROWS","values":[["Commodity","Buy Order","Demand"],["Aluminium","543","491"],["Ceramic Composites","552","539"],["CMM Composite","4816","2726"],["Computer Components","65","62"],["Copper","257","245"],["Food Cartridges","100","95"],["Fruit and Vedge","53","50"],["Insulating Membrane","371","345"],["Liquid Oxygen","1902","1717"],["Medical Diagnostic Equipment","13","13"],["Non-Lethal Weapons","13","0"],["Polymers","555","506"],["Power Generators","20","20"],["Semiconductors","72","70"],["Steel","7053","0"],["Superconductors","119","115"],["Titanium","5847","0"],["Water","789","744"],["Water Purifiers","40","37"]]}"""
+    __add_mocked_http_response(json.loads(mock_carrier_buy_order_table))
+    __add_mocked_http_response(json.loads(mock_carrier_buy_order_table))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!H3:J22?valueInputOption=USER_ENTERED"
+    assert req[1] == {"range": "'Igneels Tooth'!H3:J22", "majorDimension": "ROWS", "values": [["Commodity", "Buy Order", None], ["Aluminium", "543", None], ["Ceramic Composites", "552", None], ["CMM Composite", "4816", None], ["Computer Components", "65", None], ["Copper", "257", None], ["Food Cartridges", "100", None], ["Fruit and Vedge", "53", None], ["Insulating Membrane", "371", None], ["Liquid Oxygen", "1902", None], ["Medical Diagnostic Equipment", "13", None], ["Non-Lethal Weapons", 13, None], ["Polymers", "555", None], ["Power Generators", "20", None], ["Semiconductors", "72", None], ["Steel", "7053", None], ["Superconductors", "119", None], ["Titanium", "5847", None], ["Water", "789", None], ["Water Purifiers", "40", None]]}
+
+def test_journal_entry_CarrierTradeOrder_CancelOrder():
+    plugin.this.latestCarrierCallsign = "X7H-9KW"
+    plugin.this.myCarrierCallsign = "X7H-9KW"
+    plugin.this.myCarrierId = 3707348992
+
+    entry = { 'timestamp': '2025-09-26T09:40:02Z', 'event': 'CarrierTradeOrder', 'CarrierID': 3707348992, 'CarrierType': 'FleetCarrier', 'BlackMarket': False, 'Commodity': 'nonlethalweapons', 'Commodity_Localised': 'Non-Lethal Weapons', 'CancelTrade': True }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="", station="", entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 1
+    
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == { 'timestamp': '2025-09-26T09:40:02Z', 'event': 'CarrierTradeOrder', 'CarrierID': 3707348992, 'CarrierType': 'FleetCarrier', 'BlackMarket': False, 'Commodity': 'nonlethalweapons', 'Commodity_Localised': 'Non-Lethal Weapons', 'CancelTrade': True }
+
+    # Disabled by killswitch
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_BUYSELL_ORDER] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    # Buy Order Adjustment - disabled
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_BUYSELL_ORDER] = 'true'
+    plugin.this.sheet.sheetFunctionality['Igneels Tooth'].setdefault('Buy Order Adjustment', False)
+    mock_carrier_buy_order_table = """{"range":"'Igneels Tooth'!H3:J22","majorDimension":"ROWS","values":[["Commodity","Buy Order","Demand"],["Aluminium","543","491"],["Ceramic Composites","552","539"],["CMM Composite","4816","2726"],["Computer Components","65","62"],["Copper","257","245"],["Food Cartridges","100","95"],["Fruit and Vedge","53","50"],["Insulating Membrane","371","345"],["Liquid Oxygen","1902","1717"],["Medical Diagnostic Equipment","13","13"],["Non-Lethal Weapons","9001","9001"],["Polymers","555","506"],["Power Generators","20","20"],["Semiconductors","72","70"],["Steel","7053","0"],["Superconductors","119","115"],["Titanium","5847","0"],["Water","789","744"],["Water Purifiers","40","37"]]}"""
+    __add_mocked_http_response(json.loads(mock_carrier_buy_order_table))
+    __add_mocked_http_response(json.loads(mock_carrier_buy_order_table))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!H3:J22?valueInputOption=USER_ENTERED"
+    assert req[1] == {"range": "'Igneels Tooth'!H3:J22", "majorDimension": "ROWS", "values": [["Commodity", "Buy Order", None], ["Aluminium", "543", None], ["Ceramic Composites", "552", None], ["CMM Composite", "4816", None], ["Computer Components", "65", None], ["Copper", "257", None], ["Food Cartridges", "100", None], ["Fruit and Vedge", "53", None], ["Insulating Membrane", "371", None], ["Liquid Oxygen", "1902", None], ["Medical Diagnostic Equipment", "13", None], ["Non-Lethal Weapons", "", None], ["Polymers", "555", None], ["Power Generators", "20", None], ["Semiconductors", "72", None], ["Steel", "7053", None], ["Superconductors", "119", None], ["Titanium", "5847", None], ["Water", "789", None], ["Water Purifiers", "40", None]]}
+
+    # Buy Order Adjustment - enabled
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_BUYSELL_ORDER] = 'true'
+    plugin.this.sheet.sheetFunctionality['Igneels Tooth'].setdefault('Buy Order Adjustment', True)
+    mock_carrier_starting_inventory = """{"range":"'Igneels Tooth'!A1:C20","majorDimension":"ROWS","values":[["CMDR","Commodity","Units"],["Starting Inventory","Aluminium","52"],["Starting Inventory","Ceramic Composites","13"],["Starting Inventory","CMM Composite","83"],["Starting Inventory","Computer Components","2"],["Starting Inventory","Copper",""],["Starting Inventory","Food Cartridges","4"],["Starting Inventory","Fruit and Vedge","1"],["Starting Inventory","Insulating Membrane","7"],["Starting Inventory","Liquid Oxygen","24"],["Starting Inventory","Medical Diagnostic Equipment","0"],["Starting Inventory","Non-Lethal Weapons","13"],["Starting Inventory","Polymers","49"],["Starting Inventory","Power Generators",""],["Starting Inventory","Semiconductors","3"],["Starting Inventory","Steel","294"],["Starting Inventory","Superconductors","6"],["Starting Inventory","Titanium","98"],["Starting Inventory","Water","32"],["Starting Inventory","Water Purifiers",""]]}"""
+    __add_mocked_http_response(json.loads(mock_carrier_starting_inventory))
+    mock_carrier_buy_order_table = """{"range":"'Igneels Tooth'!H3:J22","majorDimension":"ROWS","values":[["Commodity","Buy Order","Demand"],["Aluminium","543","491"],["Ceramic Composites","552","539"],["CMM Composite","4816","2726"],["Computer Components","65","62"],["Copper","257","245"],["Food Cartridges","100","95"],["Fruit and Vedge","53","50"],["Insulating Membrane","371","345"],["Liquid Oxygen","1902","1717"],["Medical Diagnostic Equipment","13","13"],["Non-Lethal Weapons","13","0"],["Polymers","555","506"],["Power Generators","20","20"],["Semiconductors","72","70"],["Steel","7053","0"],["Superconductors","119","115"],["Titanium","5847","0"],["Water","789","744"],["Water Purifiers","40","37"]]}"""
+    __add_mocked_http_response(json.loads(mock_carrier_buy_order_table))
+    __add_mocked_http_response(json.loads(mock_carrier_buy_order_table))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!H3:J22?valueInputOption=USER_ENTERED"
+    assert req[1] == {"range": "'Igneels Tooth'!H3:J22", "majorDimension": "ROWS", "values": [["Commodity", "Buy Order", None], ["Aluminium", "543", None], ["Ceramic Composites", "552", None], ["CMM Composite", "4816", None], ["Computer Components", "65", None], ["Copper", "257", None], ["Food Cartridges", "100", None], ["Fruit and Vedge", "53", None], ["Insulating Membrane", "371", None], ["Liquid Oxygen", "1902", None], ["Medical Diagnostic Equipment", "13", None], ["Non-Lethal Weapons", 13, None], ["Polymers", "555", None], ["Power Generators", "20", None], ["Semiconductors", "72", None], ["Steel", "7053", None], ["Superconductors", "119", None], ["Titanium", "5847", None], ["Water", "789", None], ["Water Purifiers", "40", None]]}

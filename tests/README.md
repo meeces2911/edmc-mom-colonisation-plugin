@@ -12,3 +12,7 @@ To run these tests locally, you should do the following:
 * Change directory to `tests` if not already there
 * Change into the python venv `.venv\scripts\Activate.ps1`
 * Then just run pytest `pytest`
+
+## Debugging tests
+>Code Coverage cannot be enabled at the same time as debugging a test!
+* Edit `pytest.ini` and comment out any relevant `addopts` 
