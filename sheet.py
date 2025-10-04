@@ -519,6 +519,11 @@ class Sheet:
     def populate_cmdr_data(self, cmdr: str) -> None:
         """Populate CMDR specific data on start up"""
         # This shouldn't be called more than once, as we just want to pre-populate some stuff after a shutdown
+        if not cmdr:
+            logger.error("populate_cmdr_data called without a valid cmdr")
+            traceback.print_stack()
+            return
+       
         try:
             systemInfoSheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
             cmdrInfoRange = self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'H:J'
