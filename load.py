@@ -502,7 +502,7 @@ def process_kill_siwtches() -> bool:
             if not this.upgradeMsgShown:
                 restart_box = tk.messagebox.Message(
                     title='Upgrade Required',
-                    message='New version of MoM: Colonisation Tracker availabe. Spreadsheet updating disabled',
+                    message='New version of MoM: Colonisation Tracker plugin available\nUpgrade Required\nSpreadsheet updating disabled until plugin is updated',
                     type=tk.messagebox.OK
                 )
                 restart_box.show()
