@@ -527,6 +527,7 @@ def process_item(item: PushRequest) -> None:
                 inTransit = False
                 commodity = item.data['Type']
                 amount = int(item.data['Count'])
+                timestamp = item.data['timestamp']
 
                 assignedCarrierName = this.cmdrsAssignedCarrierName.get()
                 if not sheetName and assignedCarrierName:
@@ -535,7 +536,7 @@ def process_item(item: PushRequest) -> None:
                     inTransit = True
                     amount = amount * -1    # Selling, so carrier should 'loose' this amount (even, if it never really gained it)
                 
-                this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, inTransit=inTransit)
+                this.sheet.add_to_carrier_sheet(sheetName, item.cmdr, commodity, amount, inTransit=inTransit, timestamp=timestamp)
             case PushRequest.TYPE_CARRIER_LOC_UPDATE:
                 logger.info('Processing Carrier Location update')
                 if this.killswitches.get(KILLSWITCH_CARRIER_LOC, 'true') != 'true':
@@ -1185,7 +1186,8 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 # Lets make a synthic entry, to mimick a MarketSell request
                 sellEntry = {
                     'Type': 'tritium',
-                    'Count': int(entry['Amount'])
+                    'Count': int(entry['Amount']),
+                    'timestamp': entry['timestamp']
                 }
                 this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CMDR_SELL, sellEntry))
         case 'ColonisationConstructionDepot':
