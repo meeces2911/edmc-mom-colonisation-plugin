@@ -911,7 +911,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 callSign = this.squadCarrierCallsign
 
             if not callSign:
-                logger.debug(f'Carrier {entry["CarrierId"]} not known, skipping update')
+                logger.debug(f'Carrier {entry["CarrierID"]} not known, skipping update')
                 return
 
             if callSign and this.sheet and callSign in this.sheet.carrierTabNames.keys():

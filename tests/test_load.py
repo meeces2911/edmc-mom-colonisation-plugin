@@ -979,6 +979,15 @@ def test_journal_entry_MarketBuy_FromFleetCarrier():
     }
 
 def test_journal_entry_CarrierTradeOrder_BuyOrder():
+    plugin.this.latestCarrierCallsign = "ABC-123"
+    plugin.this.myCarrierCallsign = "ABC-123"
+    plugin.this.myCarrierId = 123456789
+
+    entry = { 'timestamp': '2025-09-26T09:40:02Z', 'event': 'CarrierTradeOrder', 'CarrierID': 123456789, 'CarrierType': 'FleetCarrier', 'BlackMarket': False, 'Commodity': 'nonlethalweapons', 'Commodity_Localised': 'Non-Lethal Weapons', 'PurchaseOrder': 9, 'Price': 1848 }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system="", station="", entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 0
+
     plugin.this.latestCarrierCallsign = "X7H-9KW"
     plugin.this.myCarrierCallsign = "X7H-9KW"
     plugin.this.myCarrierId = 3707348992
@@ -1304,6 +1313,26 @@ def test_journal_entry_CarrierTradeOrder_CancelOrder_Squadron():
     assert req[1] == {"range": "'The Highwayman'!H3:J22", "majorDimension": "ROWS", "values": [["Commodity", "Buy Order", None], ["Aluminium", "543", None], ["Ceramic Composites", "552", None], ["CMM Composite", "4816", None], ["Computer Components", "65", None], ["Copper", "257", None], ["Food Cartridges", "100", None], ["Fruit and Vedge", "53", None], ["Insulating Membrane", "371", None], ["Liquid Oxygen", "1902", None], ["Medical Diagnostic Equipment", "13", None], ["Non-Lethal Weapons", 13, None], ["Polymers", "555", None], ["Power Generators", "20", None], ["Semiconductors", "72", None], ["Steel", "7053", None], ["Superconductors", "119", None], ["Titanium", "5847", None], ["Water", "789", None], ["Water Purifiers", "40", None]]}
 
 def test_journal_entry_CarrierJumpRequest():
+    plugin.this.latestCarrierCallsign = None
+    plugin.this.myCarrierCallsign = "ABC-123"
+    plugin.this.myCarrierId = 123456789
+    
+    entry = { 'timestamp': '2025-03-09T02:44:36Z', 'event': 'CarrierJumpRequest', 'CarrierType': 'FleetCarrier', 'CarrierID': 123456789, 'SystemName': 'LTT 8001', 'Body': 'LTT 8001 A 2', 'SystemAddress': 3107442365154, 'BodyID': 6, 'DepartureTime': '2025-03-09T03:36:10Z' }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station=None, entry=entry, state=None)
+    
+    assert plugin.this.queue.qsize() == 0
+
+    # This test can't actually be true, because it would be a CarrierStats event didn't get triggered
+    # But for the sake of completeness in code coverage, lets do it anyway
+    plugin.this.latestCarrierCallsign = None
+    plugin.this.myCarrierCallsign = None
+    plugin.this.myCarrierId = 0
+    
+    entry = { 'timestamp': '2025-03-09T02:44:36Z', 'event': 'CarrierJumpRequest', 'CarrierType': 'FleetCarrier', 'CarrierID': 123456789, 'SystemName': 'LTT 8001', 'Body': 'LTT 8001 A 2', 'SystemAddress': 3107442365154, 'BodyID': 6, 'DepartureTime': '2025-03-09T03:36:10Z' }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station=None, entry=entry, state=None)
+    
+    assert plugin.this.queue.qsize() == 0
+
     plugin.this.latestCarrierCallsign = "X7H-9KW"
     plugin.this.myCarrierCallsign = "X7H-9KW"
     plugin.this.myCarrierId = 3707348992
