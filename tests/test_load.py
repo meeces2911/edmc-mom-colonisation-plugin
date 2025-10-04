@@ -1435,3 +1435,58 @@ def test_journal_entry_CarrierJumpCancelled_Squadron():
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'The Highwayman'!I2?valueInputOption=USER_ENTERED"
     assert req[1] == {'range': "'The Highwayman'!I2", 'majorDimension': 'ROWS', 'values': [['', '']]}
 
+def test_journal_entry_CarrierJump():
+    entry = { "timestamp":"2025-08-22T11:44:01Z", "event":"CarrierJump", "Docked":False, "OnFoot":True, "StarSystem":"Smojue PR-N d6-24", "SystemAddress":835060763323, "StarPos":[-227.90625,29.56250,3363.87500], "SystemAllegiance":"", "SystemEconomy":"$economy_None;", "SystemEconomy_Localised":"None", "SystemSecondEconomy":"$economy_None;", "SystemSecondEconomy_Localised":"None", "SystemGovernment":"$government_None;", "SystemGovernment_Localised":"None", "SystemSecurity":"$GAlAXY_MAP_INFO_state_anarchy;", "SystemSecurity_Localised":"Anarchy", "Population":0, "Body":"Smojue PR-N d6-24 A", "BodyID":1, "BodyType":"Star", "SystemFaction":{ "Name":"Brewer Corporation" } }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station=None, entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 0
+
+    entry = { "timestamp":"2025-09-26T10:17:10Z", "event":"CarrierJump", "Docked":True, "StationName":"X7H-9KW", "StationType":"FleetCarrier", "MarketID":3707348992, "StationFaction":{ "Name":"FleetCarrier" }, "StationGovernment":"$government_Carrier;", "StationGovernment_Localised":"Private Ownership", "StationServices":[ "dock", "autodock", "commodities", "contacts", "crewlounge", "rearm", "refuel", "repair", "engineer", "flightcontroller", "stationoperations", "stationMenu", "carriermanagement", "carrierfuel", "socialspace" ], "StationEconomy":"$economy_Carrier;", "StationEconomy_Localised":"Private Enterprise", "StationEconomies":[ { "Name":"$economy_Carrier;", "Name_Localised":"Private Enterprise", "Proportion":1.000000 } ], "Taxi":False, "Multicrew":False, "StarSystem":"Bleia Dryiae OV-L a7-0", "SystemAddress":5313411307576, "StarPos":[-502.96875,-32.34375,4126.78125], "SystemAllegiance":"", "SystemEconomy":"$economy_None;", "SystemEconomy_Localised":"None", "SystemSecondEconomy":"$economy_None;", "SystemSecondEconomy_Localised":"None", "SystemGovernment":"$government_None;", "SystemGovernment_Localised":"None", "SystemSecurity":"$GAlAXY_MAP_INFO_state_anarchy;", "SystemSecurity_Localised":"Anarchy", "Population":0, "Body":"Bleia Dryiae OV-L a7-0 A", "BodyID":1, "BodyType":"Star" }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station="X7H-9KW", entry=entry, state=None)
+    
+    assert plugin.this.queue.qsize() == 2
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_LOC_UPDATE
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == "Bleia Dryiae OV-L a7-0"
+
+    # Disabled by killswitch
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_LOC] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_LOC] = 'true'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!I1?valueInputOption=USER_ENTERED"
+    assert req[1] == {"range": "'Igneels Tooth'!I1", "majorDimension": "ROWS", "values": [["Bleia Dryiae OV-L a7-0"]]}
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_JUMP
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == {}
+
+    # Disabled by killswitch
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_JUMP] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_JUMP] = 'true'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!I2?valueInputOption=USER_ENTERED"
+    assert req[1] == {'range': "'Igneels Tooth'!I2", 'majorDimension': 'ROWS', 'values': [['', '']]}
+
