@@ -1369,3 +1369,69 @@ def test_journal_entry_CarrierJumpRequest_Squadron():
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'The Highwayman'!I2?valueInputOption=USER_ENTERED"
     assert req[1] == {'range': "'The Highwayman'!I2", 'majorDimension': 'ROWS', 'values': [['LTT 8001 A 2', '2025-03-09 03:36:10']]}
 
+def test_journal_entry_CarrierJumpCancelled():
+    plugin.this.latestCarrierCallsign = "X7H-9KW"
+    plugin.this.myCarrierCallsign = "X7H-9KW"
+    plugin.this.myCarrierId = 3707348992
+
+    entry = {'timestamp': '2025-10-03T23:23:20Z', 'event': 'CarrierJumpCancelled', 'CarrierType': 'FleetCarrier', 'CarrierID': 3707348992}
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station=None, entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 1
+    
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_JUMP
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == {'timestamp': '2025-10-03T23:23:20Z', 'event': 'CarrierJumpCancelled', 'CarrierType': 'FleetCarrier', 'CarrierID': 3707348992}
+
+    # Disabled by killswitch
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_JUMP] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_JUMP] = 'true'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!I2?valueInputOption=USER_ENTERED"
+    assert req[1] == {'range': "'Igneels Tooth'!I2", 'majorDimension': 'ROWS', 'values': [['', '']]}
+
+def test_journal_entry_CarrierJumpCancelled_Squadron():
+    plugin.this.latestCarrierCallsign = "MERC"
+    plugin.this.myCarrierCallsign = "X7H-9KW"
+    plugin.this.myCarrierId = 3707348992
+    plugin.this.squadCarrierCallsign = "MERC"
+    plugin.this.squadCarrierId = 3713242624
+
+    entry = {'timestamp': '2025-10-03T23:26:46Z', 'event': 'CarrierJumpCancelled', 'CarrierType': 'SquadronCarrier', 'CarrierID': 3713242624}
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station=None, entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 1
+    
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_JUMP
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "MERC"
+    assert pr.data == {'timestamp': '2025-10-03T23:26:46Z', 'event': 'CarrierJumpCancelled', 'CarrierType': 'SquadronCarrier', 'CarrierID': 3713242624}
+
+    # Disabled by killswitch
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_JUMP] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_JUMP] = 'true'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'The Highwayman'!I2?valueInputOption=USER_ENTERED"
+    assert req[1] == {'range': "'The Highwayman'!I2", 'majorDimension': 'ROWS', 'values': [['', '']]}
+
