@@ -1490,3 +1490,28 @@ def test_journal_entry_CarrierJump():
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!I2?valueInputOption=USER_ENTERED"
     assert req[1] == {'range': "'Igneels Tooth'!I2", 'majorDimension': 'ROWS', 'values': [['', '']]}
 
+def test_journal_entry_CarrierStats():
+    plugin.this.latestCarrierCallsign = None
+    plugin.this.myCarrierCallsign = None
+    plugin.this.myCarrierId = 0
+    plugin.this.squadCarrierCallsign = None
+    plugin.this.squadCarrierId = 0
+    
+    entry = {'timestamp': '2025-09-26T10:00:52Z', 'event': 'CarrierStats', 'CarrierID': 3707348992, 'CarrierType': 'FleetCarrier', 'Callsign': 'X7H-9KW', 'Name': 'Igneels Tooth', 'DockingAccess': 'squadronfriends', 'AllowNotorious': True, 'FuelLevel': 648, 'JumpRangeCurr': 500.0, 'JumpRangeMax': 500.0, 'PendingDecommission': False, 'SpaceUsage': {'TotalCapacity': 25000, 'Crew': 1320, 'Cargo': 23680, 'CargoSpaceReserved': 0, 'ShipPacks': 0, 'ModulePacks': 0, 'FreeSpace': 0}, 'Finance': {'CarrierBalance': 4346226411, 'ReserveBalance': 99442655, 'AvailableBalance': 4246783756, 'ReservePercent': 2, 'TaxRate_rearm': 10, 'TaxRate_refuel': 10, 'TaxRate_repair': 10}, 'Crew': [{'CrewRole': 'BlackMarket', 'Activated': False}, {'CrewRole': 'Captain', 'Activated': True, 'Enabled': True, 'CrewName': 'Loren Mcdowell'}, {'CrewRole': 'Refuel', 'Activated': True, 'Enabled': True, 'CrewName': 'Marlin Cain'}, {'CrewRole': 'Repair', 'Activated': True, 'Enabled': True, 'CrewName': 'Jemma Short'}, {'CrewRole': 'Rearm', 'Activated': True, 'Enabled': True, 'CrewName': 'Shannon Larson'}, {'CrewRole': 'Commodities', 'Activated': True, 'Enabled': True, 'CrewName': 'Jennifer Cardenas'}, {'CrewRole': 'VoucherRedemption', 'Activated': False}, {'CrewRole': 'Exploration', 'Activated': True, 'Enabled': False, 'CrewName': 'Thanh Wynn'}, {'CrewRole': 'Shipyard', 'Activated': False}, {'CrewRole': 'Outfitting', 'Activated': False}, {'CrewRole': 'CarrierFuel', 'Activated': True, 'Enabled': True, 'CrewName': 'Jorge Dale'}, {'CrewRole': 'VistaGenomics', 'Activated': True, 'Enabled': False, 'CrewName': 'Gene Leka'}, {'CrewRole': 'PioneerSupplies', 'Activated': False}, {'CrewRole': 'Bartender', 'Activated': True, 'Enabled': False, 'CrewName': 'Columbus Cox'}], 'ShipPacks': [], 'ModulePacks': []}
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station="X7H-9KW", entry=entry, state=None)
+
+    assert plugin.this.latestCarrierCallsign == None    # Set in Docked message
+    assert plugin.this.myCarrierCallsign == "X7H-9KW"
+    assert plugin.this.myCarrierId == 3707348992
+    assert plugin.this.squadCarrierCallsign == None
+    assert plugin.this.squadCarrierId == 0
+
+    entry = { "timestamp":"2025-10-03T23:26:49Z", "event":"CarrierStats", "CarrierID":3713242624, "CarrierType":"SquadronCarrier", "Callsign":"MERC", "Name":"THE HIGHWAYMAN", "DockingAccess":"all", "AllowNotorious":False, "FuelLevel":857, "JumpRangeCurr":500.000000, "JumpRangeMax":500.000000, "PendingDecommission":False, "SpaceUsage":{ "TotalCapacity":60000, "Crew":6270, "Cargo":0, "CargoSpaceReserved":9163, "ShipPacks":0, "ModulePacks":0, "FreeSpace":875 }, "Finance":{ "CarrierBalance":705651383, "ReserveBalance":0, "AvailableBalance":659094180, "ReservePercent":0, "TaxRate_pioneersupplies":0, "TaxRate_shipyard":0, "TaxRate_rearm":0, "TaxRate_outfitting":0, "TaxRate_refuel":0, "TaxRate_repair":0 }, "Crew":[ { "CrewRole":"Captain", "Activated":True, "Enabled":True, "CrewName":"Jacey Hudson" }, { "CrewRole":"Refuel", "Activated":True, "Enabled":True, "CrewName":"Tomas Richmond" }, { "CrewRole":"Repair", "Activated":True, "Enabled":True, "CrewName":"Daleysa Whitfield" }, { "CrewRole":"Rearm", "Activated":True, "Enabled":True, "CrewName":"Peter Fleming" }, { "CrewRole":"Exploration", "Activated":True, "Enabled":True, "CrewName":"Ruth Whitley" }, { "CrewRole":"Shipyard", "Activated":True, "Enabled":True, "CrewName":"Khalia Kennedy" }, { "CrewRole":"Outfitting", "Activated":True, "Enabled":True, "CrewName":"Cameron Schwartz" }, { "CrewRole":"CarrierFuel", "Activated":True, "Enabled":True, "CrewName":"Amy Wiggins" }, { "CrewRole":"VistaGenomics", "Activated":True, "Enabled":True, "CrewName":"Selene Andrews" }, { "CrewRole":"PioneerSupplies", "Activated":True, "Enabled":True, "CrewName":"Sedona Randolph" }, { "CrewRole":"Bartender", "Activated":True, "Enabled":True, "CrewName":"Juan Lambert" } ], "ShipPacks":[  ], "ModulePacks":[  ] }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station="X7H-9KW", entry=entry, state=None)
+
+    assert plugin.this.latestCarrierCallsign == None    # Set in Docked message
+    assert plugin.this.myCarrierCallsign == "X7H-9KW"
+    assert plugin.this.myCarrierId == 3707348992
+    assert plugin.this.squadCarrierCallsign == "MERC"
+    assert plugin.this.squadCarrierId == 3713242624
+
