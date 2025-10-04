@@ -83,6 +83,9 @@ class This:
 
         self.latestCarrierCallsign: str | None = None
         self.myCarrierCallsign: str | None = None
+        self.myCarrierId: int = 0
+        self.squadCarrierCallsign: str | None = None
+        self.squadCarrierId: int = 0
         self.cargoCapacity: int = 0
         self.cmdrsAssignedCarrierName: tk.StringVar = tk.StringVar(value=config.get_str(CONFIG_ASSIGNED_CARRIER))
         self.nextSCSReconcileTime: int = int(time.time())
@@ -759,7 +762,6 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 if len(state.get('Cargo', {})) == 0:
                     logger.debug('No cargo, queuing in-transit clear')
                     this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_INTRANSIT_RECALC, {'clear': True}))  # Currently docked carrier
-                
         case 'Location':
             logger.info(f'Location: In system {system}')
             if station is None:
@@ -844,6 +846,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 "timestamp": "2025-03-08T05:39:13Z",
                 "event": "CarrierTradeOrder",
                 "CarrierID": 3707348992,
+                "CarrierType": "FleetCarrier",
                 "BlackMarket": false,
                 "Commodity": "copper",
                 "PurchaseOrder": 252,
@@ -854,6 +857,7 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 "timestamp": "2025-03-08T23:57:41Z",
                 "event": "CarrierTradeOrder",
                 "CarrierID": 3707348992,
+                "CarrierType": "FleetCarrier",
                 "BlackMarket": false,
                 "Commodity": "steel",
                 "SaleOrder": 70,
@@ -864,22 +868,34 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 "timestamp": "2025-03-09T00:06:29Z",
                 "event": "CarrierTradeOrder",
                 "CarrierID": 3707348992,
+                "CarrierType": "FleetCarrier",
                 "BlackMarket": false,
                 "Commodity": "insulatingmembrane",
                 "Commodity_Localised": "Insulating Membrane",
                 "CancelTrade": true
             }
             """
-            if this.myCarrierCallsign and this.sheet and this.myCarrierCallsign in this.sheet.carrierTabNames.keys():
-                logger.debug(f'Carrier "{this.myCarrierCallsign}" known, creating queue entry')
-                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE, entry))
+            
+            # this.latestCarrierCallsign should always be the carrier that this trade order is for...
+            # but, lets use the ids just in case
+
+            callSign: str | None = None
+            if int(entry['CarrierID']) == this.myCarrierId:
+                callSign = this.myCarrierCallsign
+            elif int(entry['CarrierID']) == this.squadCarrierId:
+                callSign = this.squadCarrierCallsign
+            
+            if callSign and this.sheet and callSign in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{callSign}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, callSign, PushRequest.TYPE_CARRIER_BUY_SELL_ORDER_UPDATE, entry))
             else:
-                logger.debug(f'Carrier "{this.myCarrierCallsign}" not known, skipping market update')
+                logger.debug(f'Carrier "{callSign}" not known, skipping market update')
         case 'CarrierJumpRequest' | 'CarrierJumpCancelled':
             """
             {
                 "timestamp": "2025-03-09T02:44:36Z",
                 "event": "CarrierJumpRequest",
+                "CarrierType":"SquadronCarrier",
                 "CarrierID": 3707348992,
                 "SystemName": "LTT 8001",
                 "Body": "LTT 8001 A 2",
@@ -888,9 +904,19 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 "DepartureTime": "2025-03-09T03:36:10Z"
             }
             """
-            if this.myCarrierCallsign and this.sheet and this.myCarrierCallsign in this.sheet.carrierTabNames.keys():
-                logger.debug(f'Carrier "{this.myCarrierCallsign}" known, creating queue entry')
-                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_JUMP, entry))
+            callSign: str | None = None
+            if int(entry['CarrierID']) == this.myCarrierId:
+                callSign = this.myCarrierCallsign
+            elif int(entry['CarrierID']) == this.squadCarrierId:
+                callSign = this.squadCarrierCallsign
+
+            if not callSign:
+                logger.debug(f'Carrier {entry["CarrierId"]} not known, skipping update')
+                return
+
+            if callSign and this.sheet and callSign in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{callSign}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, callSign, PushRequest.TYPE_CARRIER_JUMP, entry))
         case 'CarrierJump':
             """
             {
@@ -992,16 +1018,25 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 }
             }
             """
-            if this.myCarrierCallsign and this.sheet and this.myCarrierCallsign in this.sheet.carrierTabNames.keys():
-                logger.debug(f'Carrier "{this.myCarrierCallsign}" known, creating queue entry')
-                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_LOC_UPDATE, entry['StarSystem']))
-                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_JUMP, {}))
+            # CarrierJump doesn't actually (currently) contain enough information to uniquely identify which carrier its for :(
+            # CarrierJump only occurs with certinty when docked to the relevant carrier
+            # So - the sefest option is to only update the sheet if docked: true 
+
+            if not bool(entry['Docked']):
+                logger.debug(f'CMDR is not docked to carrier, unable to determine which carrier this event is for, skipping')
+                return
+
+            if station and this.sheet and station in this.sheet.carrierTabNames.keys():
+                logger.debug(f'Carrier "{station}" known, creating queue entry')
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_LOC_UPDATE, entry['StarSystem']))
+                this.queue.put(PushRequest(cmdr, station, PushRequest.TYPE_CARRIER_JUMP, {}))
         case 'CarrierStats':
             """
             {
                 'timestamp': '2025-03-09T05:07:21Z',
                 'event': 'CarrierStats',
                 'CarrierID': 3707348992,
+                'CarrierType': 'FleetCarrier',
                 'Callsign': 'X7H-9KW',
                 'Name': 'THE LAST RESORT',
                 'DockingAccess': 'all',
@@ -1086,8 +1121,14 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
             }
             """
             # Keep track of the call sign for easy lookups later
-            this.myCarrierCallsign = entry['Callsign']
-            logger.debug(f'Carrier ID updated to {this.latestCarrierCallsign}')
+            if entry['CarrierType'] == 'FleetCarrier':
+                this.myCarrierCallsign = entry['Callsign']
+                this.myCarrierId = int(entry['CarrierID'])
+                logger.debug(f'Carrier ID updated to {this.myCarrierCallsign}/{this.myCarrierId}')
+            elif entry['CarrierType'] == 'SquadronCarrier':
+                this.squadCarrierCallsign = entry['Callsign']
+                this.squadCarrierId = int(entry['CarrierID'])
+                logger.debug(f'Squadron Carrier ID updated to {this.squadCarrierCallsign}/{this.squadCarrierId}')
         case 'CarrierLocation':
             """
             {
@@ -1099,10 +1140,16 @@ def journal_entry(cmdr, is_beta, system, station, entry, state):
                 'BodyID': 15
             }
             """
-            if this.myCarrierCallsign and this.sheet and this.myCarrierCallsign in this.sheet.carrierTabNames.keys():
+            callSign: str | None = None
+            if int(entry['CarrierID']) == this.myCarrierId:
+                callSign = this.myCarrierCallsign
+            elif int(entry['CarrierID']) == this.squadCarrierId:
+                callSign = this.squadCarrierCallsign
+            
+            if callSign and this.sheet and callSign in this.sheet.carrierTabNames.keys():
                 logger.debug(f'Carrier "{this.myCarrierCallsign}" known, creating queue entry')
-                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_LOC_UPDATE, entry['StarSystem']))
-                this.queue.put(PushRequest(cmdr, this.myCarrierCallsign, PushRequest.TYPE_CARRIER_JUMP, {}))
+                this.queue.put(PushRequest(cmdr, callSign, PushRequest.TYPE_CARRIER_LOC_UPDATE, entry['StarSystem']))
+                this.queue.put(PushRequest(cmdr, callSign, PushRequest.TYPE_CARRIER_JUMP, {}))
         case 'CargoTransfer':
             """
             {
