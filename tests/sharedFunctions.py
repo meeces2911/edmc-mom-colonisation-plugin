@@ -48,8 +48,8 @@ class MockHTTPResponse:
 
     @staticmethod
     def json():
-        logger.critical(f'{len(MOCK_HTTP_RESPONSES)} HTTP Responses remaining')
         res = MOCK_HTTP_RESPONSES.pop(0) if len(MOCK_HTTP_RESPONSES) > 0 else { 'body': 'mock response' }
+        logger.critical(f'{len(MOCK_HTTP_RESPONSES)} HTTP Responses remaining')
         #logger.debug(f'MockHTTPResponse::json returning: {res}')
         return res
     

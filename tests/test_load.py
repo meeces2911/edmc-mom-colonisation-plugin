@@ -1669,3 +1669,46 @@ def test_journal_entry_CarrierLocation_Squadron():
     req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
     assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'The Highwayman'!I2?valueInputOption=USER_ENTERED"
     assert req[1] == {'range': "'The Highwayman'!I2", 'majorDimension': 'ROWS', 'values': [['', '']]}
+
+def test_journal_entry_CarrierDepositFuel():
+    entry = {'timestamp':'2025-03-25T08:06:16Z', 'event':'CarrierDepositFuel', 'CarrierID':3707348992, 'Amount':1, 'Total':245}
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station="ABC-123", entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 0
+
+    entry = {'timestamp':'2025-03-25T08:06:16Z', 'event':'CarrierDepositFuel', 'CarrierID':3707348992, 'Amount':1, 'Total':245}
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station="X7H-9KW", entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 1
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CMDR_SELL
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == { 'Type': 'tritium', 'Count': 1, 'timestamp': '2025-03-25T08:06:16Z' }
+
+    # Disabled by killswitch
+    plugin.this.killswitches[plugin.KILLSWITCH_CMDR_BUYSELL] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    plugin.this.killswitches[plugin.KILLSWITCH_CMDR_BUYSELL] = 'true'
+    plugin.this.sheet.sheetFunctionality['Igneels Tooth']['Delivery'] = True
+    plugin.this.sheet.sheetFunctionality['Igneels Tooth']['Timestamp'] = True
+    mock_carrier_sheet_response = """{"spreadsheetId":"1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE","tableRange":"'Igneels Tooth'!A1:E62","updates":{"spreadsheetId":"1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE","updatedRange":"'Igneels Tooth'!A63:E63","updatedRows":1,"updatedColumns":5,"updatedCells":5,"updatedData":{"range":"'Igneels Tooth'!A63:E63","majorDimension":"ROWS","values":[["cmdr_name","Tritium","1","FALSE","2025-03-25 08:06:16"]]}}}"""
+    __add_mocked_http_response(json.loads(mock_carrier_sheet_response))
+    __add_mocked_http_response(json.loads(mock_carrier_sheet_response))
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 2
+    
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!A:A:append?valueInputOption=USER_ENTERED&includeValuesInResponse=true"
+    assert req[1] == {'range': "'Igneels Tooth'!A:A", 'majorDimension': 'ROWS', 'values': [['cmdr_name', 'Tritium', 1, True, '2025-03-25 08:06:16']]}
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE:batchUpdate"
+    assert req[1] == {"requests": [{"repeatCell": {"range": {"sheetId": 1223817771, "startRowIndex": 62, "endRowIndex": 63, "startColumnIndex": 3, "endColumnIndex": 4}, "cell": {"dataValidation": {"condition": {"type": "BOOLEAN"}}}, "fields": "dataValidation.condition"}}]}
+    
