@@ -1515,3 +1515,128 @@ def test_journal_entry_CarrierStats():
     assert plugin.this.squadCarrierCallsign == "MERC"
     assert plugin.this.squadCarrierId == 3713242624
 
+def test_journal_entry_CarrierLocation():
+    plugin.this.latestCarrierCallsign = None
+    plugin.this.myCarrierCallsign = "ABC-123"
+    plugin.this.myCarrierId = 12345678
+
+    entry = { "timestamp":"2025-10-03T23:08:04Z", "event":"CarrierLocation", "CarrierType":"FleetCarrier", "CarrierID":3707348992, "StarSystem":"Bleia Dryiae OV-L a7-0", "SystemAddress":5313411307576, "BodyID":1 }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station=None, entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 0
+
+    plugin.this.myCarrierCallsign = "X7H-9KW"
+    plugin.this.myCarrierId = 3707348992
+    plugin.this.squadCarrierCallsign = "MERC"
+    plugin.this.squadCarrierId = 3713242624
+
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station=None, entry=entry, state=None)
+    assert plugin.this.queue.qsize() == 2
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_LOC_UPDATE
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == "Bleia Dryiae OV-L a7-0"
+
+    # Disabled by killswitch
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_LOC] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_LOC] = 'true'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!I1?valueInputOption=USER_ENTERED"
+    assert req[1] == {'range': "'Igneels Tooth'!I1", 'majorDimension': 'ROWS', 'values': [['Bleia Dryiae OV-L a7-0']]}
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_JUMP
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "X7H-9KW"
+    assert pr.data == {}
+
+    # Disabled by killswitch
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_JUMP] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_JUMP] = 'true'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'Igneels Tooth'!I2?valueInputOption=USER_ENTERED"
+    assert req[1] == {'range': "'Igneels Tooth'!I2", 'majorDimension': 'ROWS', 'values': [['', '']]}
+
+def test_journal_entry_CarrierLocation_Squadron():
+    plugin.this.latestCarrierCallsign = None
+    plugin.this.myCarrierCallsign = "ABC-123"
+    plugin.this.myCarrierId = 123456789
+    plugin.this.squadCarrierCallsign = "ZYX-987"
+    plugin.this.squadCarrierId = 987654321
+
+    entry = { "timestamp":"2025-10-03T23:08:18Z", "event":"CarrierLocation", "CarrierType":"SquadronCarrier", "CarrierID":3713242624, "StarSystem":"Smojue CF-P c19-2", "SystemAddress":633004397994, "BodyID":5 }
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station=None, entry=entry, state=None)
+
+    assert plugin.this.queue.qsize() == 0
+
+    plugin.this.myCarrierCallsign = "X7H-9KW"
+    plugin.this.myCarrierId = 3707348992
+    plugin.this.squadCarrierCallsign = "MERC"
+    plugin.this.squadCarrierId = 3713242624
+
+    plugin.journal_entry(cmdr=monitor.monitor.cmdr, is_beta=False, system=None, station=None, entry=entry, state=None)
+    assert plugin.this.queue.qsize() == 2
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_LOC_UPDATE
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "MERC"
+    assert pr.data == "Smojue CF-P c19-2"
+
+    # Disabled by killswitch
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_LOC] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_LOC] = 'true'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'The Highwayman'!I1?valueInputOption=USER_ENTERED"
+    assert req[1] == {'range': "'The Highwayman'!I1", 'majorDimension': 'ROWS', 'values': [['Smojue CF-P c19-2']]}
+
+    pr = plugin.this.queue.get_nowait()
+    assert pr
+    assert pr.type == plugin.PushRequest.TYPE_CARRIER_JUMP
+    assert pr.cmdr == monitor.monitor.cmdr
+    assert pr.station == "MERC"
+    assert pr.data == {}
+
+    # Disabled by killswitch
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_JUMP] = 'false'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 0
+
+    plugin.this.killswitches[plugin.KILLSWITCH_CARRIER_JUMP] = 'true'
+    ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
+    plugin.process_item(pr)
+    assert len(ACTUAL_HTTP_PUT_POST_REQUESTS) == 1
+
+    req = ACTUAL_HTTP_PUT_POST_REQUESTS.pop(0)
+    assert req[0] == "https://sheets.googleapis.com/v4/spreadsheets/1eTM0sXZ1Jr-L-u6ywuhaRwezWnJsRRnYlQStCyv2IZE/values/'The Highwayman'!I2?valueInputOption=USER_ENTERED"
+    assert req[1] == {'range': "'The Highwayman'!I2", 'majorDimension': 'ROWS', 'values': [['', '']]}
