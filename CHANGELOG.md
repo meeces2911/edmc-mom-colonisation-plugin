@@ -1,5 +1,12 @@
 # Change Log
 
+## 1.5.0
+
+### What's Changed
+* Made a few small tweaks to better support Squadron Carriers
+* Changed CarrierDepositFuel events (donating Tritium) to use the timestamp provided in the event, rather than the current time when adding to the sheet
+* (Finally) Show a dialog message box advising a plugin upgrade is required when a new minimum version is detected
+
 ## 1.4.1
 
 ### Fixed
