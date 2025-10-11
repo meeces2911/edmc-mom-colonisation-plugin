@@ -219,6 +219,9 @@ class Sheet:
             base_url += f'ranges={range}&'
         base_url += 'majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE'
         logger.debug(f'Sending request to GET {base_url}')
+        if config.shutting_down:
+            # Last chance to bail early, otherwise we might get stuck
+            return None
         try:
             token_refresh_attempted = False
             attempt = 1
@@ -470,6 +473,10 @@ class Sheet:
                 rangeIdx += 1
         except:
             logger.error(traceback.format_exc())
+
+        if config.shutting_down:
+            # We might've been asked to shutdown between the first GET and this one
+            return
 
         # Now get anything that relies on the lookups being set
         try:

@@ -403,9 +403,19 @@ def worker() -> None:
             for i in range(1, 30):
                 time.sleep(1)
                 if config.shutting_down:
-                    logger.debug('Main: Shutting down, exiting thread')
-                    return None
+                    # Returning directly here seems to 'hang' the thread more often than not
+                    # So lets just bail and return outside of the loop instead
+                    break
+                if this.pauseWork:
+                    while True:
+                        time.sleep(1 / 10)
+                        if not this.pauseWork:
+                            break
 
+    if config.shutting_down:
+        logger.debug("Main: Shutting down, exiting thread")
+        return
+    
     # Add any of our UI widgets that require sheet data
     _add_carrier_widget()
     theme.update(this.uiFrame)
@@ -419,7 +429,7 @@ def worker() -> None:
             if this.pauseWork:
                 while this.pauseWork:
                     if config.shutting_down:
-                        logger.debug("Main: Shutting down, existing thread")
+                        logger.debug("Main: Shutting down, exiting thread")
                         return
                     # Spin
                     time.sleep(1 / 10)
@@ -427,6 +437,10 @@ def worker() -> None:
                 # Auth token has been cleared via the button in settings
                 if not this.auth.access_token:
                     this.auth.refresh()
+
+                if config.shutting_down:
+                    logger.debug("Main: Shutting down, exiting thread")
+                    return
 
                 # Settings change, fetch everything from scratch    
                 initial_startup()
@@ -476,15 +490,24 @@ def initial_startup() -> None:
     # Get auth token first
     this.auth = Auth(monitor.cmdr, this.requests_session)
     this.auth.refresh()
+    if config.shutting_down:
+        return
 
     # Ok, now make sure we can access the spreadsheet
     this.sheet = Sheet(this.auth, this.requests_session)
+    if config.shutting_down:
+        return
     
     # Request some initial settings
     this.sheet.populate_initial_settings()
     this.killswitches = this.sheet.killswitches
+    if config.shutting_down:
+        return
+        
     this.sheet.populate_cmdr_data(monitor.cmdr)
     this.cmdrsAssignedCarrierName.set(config.get_str(CONFIG_ASSIGNED_CARRIER))
+    if config.shutting_down:
+        return
     
     # Record the fact that we're using the plugin
     this.sheet.record_plugin_usage(monitor.cmdr, VERSION)
