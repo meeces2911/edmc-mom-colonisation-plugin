@@ -378,9 +378,21 @@ def worker() -> None:
     while not monitor.cmdr:
         time.sleep(1 / 10)
         if config.shutting_down:
-            logger.debug("Main: Shutting down, existing thread")
+            logger.debug("Main: Shutting down, exiting thread")
             return None
     
+    logger.debug(f"CMDR: {monitor.cmdr} found")
+
+    # Wait for CAPI to connect successfully (should hopefully avoid duplicate OAuth requests?)
+    logger.debug("Waiting for CAPI to connect...")
+    while not csession.state == csession.STATE_OK:
+        time.sleep(1 / 10)
+        if config.shutting_down:
+            logger.debug("Main: Shutting down, exiting thread")
+            return None
+    
+    logger.debug("CAPI Connected, continuing")
+
     while True:
         try:
             initial_startup()
