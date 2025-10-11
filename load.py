@@ -186,11 +186,15 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
         ).grid(row=cur_row, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
 
     with row as cur_row:
+        token = None
+        if this.auth:
+            token = this.auth.access_token
+
         this.clearAuthButton = ttk.Button(
             frame,
             text='Clear Google Authentication',
             command=lambda: clear_token_and_disable_button(),
-            state=tk.ACTIVE if this.auth.access_token else tk.DISABLED
+            state=tk.ACTIVE if token else tk.DISABLED
         )
         this.clearAuthButton.grid(row=cur_row, padx=BUTTONX, pady=PADY, sticky=tk.W)
 
