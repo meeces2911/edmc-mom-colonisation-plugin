@@ -1,5 +1,18 @@
 # Change Log
 
+## 1.6.0
+
+### What's Changed
+* Added a timeout to the shutdown code so that if a HTTP call is part way through when closing EDMC, we don't wait forever for it to finish
+* On that note, also added a whole bunch more checks to see if we're in the middle of a shut down before doing a (potentially) long running operation
+* Added additional status bar update when fetching the initial settings - as if google is going a bit slow that can take a minute and its nice to know the plugin is indeed still doing something
+* First go at changing the Carrier and Sheet dropdowns to a searchable Combobox. For now, this has only been done for the ones on the plugin options sheet, not the one that appears on the main screen - as these Comboboxes do not respect the selected theme (at least on Windows).
+  * (and for those of us that use the Transparent theme, it makes a _noticable_ difference if something isn't using the theme!)
+
+### Fixed
+* Fixed default config values not working correctly if the initial settings can't be fetched. This resulted in the plugin options sheet not being able to be displayed correctly, and the user effectively stuck with no way of fixing the issue.
+* Fixed - hopefully (or at least prevented) - occurrences of blank CMDRs ending up being added to the spreadsheet. Still not 100% sure what scenario is the actual cause of this
+
 ## 1.5.0
 
 ### What's Changed

@@ -35,7 +35,7 @@ from widgets import AutoComplete
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
 
-VERSION = '1.5.0'
+VERSION = '1.6.0'
 _CAPI_RESPONSE_TK_EVENT_NAME = '<<CAPIResponse>>'
 
 KILLSWITCH_CMDR_UPDATE = 'cmdr info update'
