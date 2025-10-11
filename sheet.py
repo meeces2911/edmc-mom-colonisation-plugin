@@ -480,8 +480,8 @@ class Sheet:
 
         # Now get anything that relies on the lookups being set
         try:
-            systemsInProgressRange = self.lookupRanges[self.LOOKUP_SYSTEMS_IN_PROGRESS] or 'Data!BH2:BH30'
-            systemInfoSheetName = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
+            systemsInProgressRange = self.lookupRanges.get(self.LOOKUP_SYSTEMS_IN_PROGRESS, 'Data!BH2:BH30')
+            systemInfoSheetName = self.lookupRanges.get(self.LOOKUP_SYSTEMINFO_SHEET_NAME, 'System Info')
             startRow = max(self.highestKnownSystemRow-50, 0) + 1
             systemsCompletedRange = f"'{systemInfoSheetName}'!A{startRow}:A"
 
@@ -532,8 +532,8 @@ class Sheet:
             return
        
         try:
-            systemInfoSheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
-            cmdrInfoRange = self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'H:J'
+            systemInfoSheet = self.lookupRanges.get(self.LOOKUP_SYSTEMINFO_SHEET_NAME, 'System Info')
+            cmdrInfoRange = self.lookupRanges.get(self.LOOKUP_CMDR_INFO, 'H:J')
 
             data = self.fetch_data_bulk([f'{systemInfoSheet}!{cmdrInfoRange}'])
             if not data or len(data) == 0:
@@ -582,7 +582,7 @@ class Sheet:
         
         logger.debug(f'Building Carrier Sheet Message (sheet:{sheet} inTransit:{inTransit} commodity:{commodity} amount:{amount})')
         range = f"'{sheet}'!A:A"
-        sheetIsSCSOffload = sheet == self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME]
+        sheetIsSCSOffload = sheet == self.lookupRanges.get(self.LOOKUP_SCS_SHEET_NAME)
 
         if not sheetIsSCSOffload:
             bodyValue = [
@@ -719,7 +719,7 @@ class Sheet:
     def update_carrier_location(self, sheet: str, system: str) -> None:
         """Update the carrier sheet with its current location"""
         logger.debug('Building Carrier Location Message')
-        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_LOCATION] or 'I1'}"
+        range = f"'{sheet}'!{self.lookupRanges.get(self.LOOKUP_CARRIER_LOCATION, 'I1')}"
         body = {
             'range': range,
             'majorDimension': 'ROWS',
@@ -735,7 +735,7 @@ class Sheet:
     def update_carrier_jump_location(self, sheet: str, system: str, departTime: str | None) -> None:
         """Update the carrier sheet with its planned jump"""
         logger.debug("Building Carrier Jump Message")
-        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_JUMP_LOC] or 'I2'}"
+        range = f"'{sheet}'!{self.lookupRanges.get(self.LOOKUP_CARRIER_JUMP_LOC, 'I2')}"
         ts = ''
         if departTime:
             ts = self._get_datetime_string(departTime)
@@ -767,7 +767,7 @@ class Sheet:
         if self.sheetFunctionality[sheet].get('Buy Order Adjustment', False):
             logger.debug('Adjust Buy Order is set, fudging the value to include the Starting Inventory')
             # Fudge the Buy order a bit to keep the ship inventory total correct, by including any starting inventory
-            startingInventory = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_STARTING_INV] or 'A1:C20'}")
+            startingInventory = self.fetch_data(f"{sheet}!{self.lookupRanges.get(self.LOOKUP_CARRIER_STARTING_INV, 'A1:C20')}")
             logger.debug(startingInventory)
             if len(startingInventory) == 0:
                 logger.error('No Starting Inventory found, bailing')
@@ -778,7 +778,7 @@ class Sheet:
                     amount += int(row[2])
 
         # Find our commodity in the list
-        buyOrders = self.fetch_data(f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CARRIER_BUY_ORDERS] or 'H3:J22'}")
+        buyOrders = self.fetch_data(f"'{sheet}'!{self.lookupRanges.get(self.LOOKUP_CARRIER_BUY_ORDERS, 'H3:J22')}")
         logger.debug(f'Old: {buyOrders}')
         if len(buyOrders) == 0:
             logger.error('No Buy Order table found, bailing')
@@ -829,7 +829,7 @@ class Sheet:
     def add_to_scs_sheet(self, cmdr: str, system: str, commodity: str, amount: int, timestamp: str) -> None:
         """Updates the SCS sheet with some cargo"""
         logger.debug('Building SCS Sheet Message')
-        sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
+        sheet = self.lookupRanges.get(self.LOOKUP_SCS_SHEET_NAME, 'SCS Offload')
         range = f"'{sheet}'!A:A"
         update = False
 
@@ -976,8 +976,8 @@ class Sheet:
     def update_cmdr_attributes(self, cmdr: str, cargoCapacity: int) -> None:
         """Updates anything we wnat to track about the current CMDR"""
         logger.debug('Building CMDR Update Message')
-        sheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
-        range = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_CMDR_INFO] or 'H:J'}"
+        sheet = self.lookupRanges.get(self.LOOKUP_SYSTEMINFO_SHEET_NAME, 'System Info')
+        range = f"'{sheet}'!{self.lookupRanges.get(self.LOOKUP_CMDR_INFO, 'H:J')}"
         data = self.fetch_data(range)
         logger.debug(data)
 
@@ -1022,13 +1022,13 @@ class Sheet:
         logger.debug('Building Reconcile Carrier message')
         sheet = f"'{self.carrierTabNames[carrier]}'"
         
-        buyOrders = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_BUY_ORDERS] or 'H3:J22'}")
+        buyOrders = self.fetch_data(f"{sheet}!{self.lookupRanges.get(self.LOOKUP_CARRIER_BUY_ORDERS, 'H3:J22')}")
         logger.debug(buyOrders)
         if len(buyOrders) == 0:
             logger.error('No Buy Order data found, bailing')
             return
         
-        startingInventory = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_STARTING_INV] or 'A1:C20'}")
+        startingInventory = self.fetch_data(f"{sheet}!{self.lookupRanges.get(self.LOOKUP_CARRIER_STARTING_INV, 'A1:C20')}")
         logger.debug(startingInventory)
         if len(startingInventory) == 0:
             logger.error('No Starting Inventory found, bailing')
@@ -1066,7 +1066,7 @@ class Sheet:
                         row[1] = int(order['total']) + startingInventoryAmounts.get(commodityName, 0)
 
         # Work out how much the spreadsheet thinks is on the ship
-        sumCargo = self.fetch_data(f"{sheet}!{self.lookupRanges[self.LOOKUP_CARRIER_SUM_CARGO] or 'AA:AB'}")
+        sumCargo = self.fetch_data(f"{sheet}!{self.lookupRanges.get(self.LOOKUP_CARRIER_SUM_CARGO, 'AA:AB')}")
         logger.debug(sumCargo)
         if len(sumCargo) == 0:
             logger.error('No Sum Cargo data found, bailing')
@@ -1189,7 +1189,7 @@ class Sheet:
         if system in self.lastFiftyCompletedSystems:
             found = True
         else:
-            sheet = self.lookupRanges[self.LOOKUP_SYSTEMINFO_SHEET_NAME] or 'System Info'
+            sheet = self.lookupRanges.get(self.LOOKUP_SYSTEMINFO_SHEET_NAME, 'System Info')
             range = f"'{sheet}'!A{self.highestKnownSystemRow}:A"
             data = self.fetch_data(range)
             logger.debug(data)
@@ -1245,8 +1245,8 @@ class Sheet:
 
         try:
             # Get the current values
-            sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
-            gsRange = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_SCS_PROGRESS_PIVOT] or 'W4:BY'}"
+            sheet = self.lookupRanges.get(self.LOOKUP_SCS_SHEET_NAME, 'SCS Offload')
+            gsRange = f"'{sheet}'!{self.lookupRanges.get(self.LOOKUP_SCS_PROGRESS_PIVOT, 'W4:BY')}"
             logger.debug('Fetching current values from pivot table 1')
             data  = self.fetch_data(gsRange)
             logger.debug(data)
@@ -1288,8 +1288,8 @@ class Sheet:
             # So, we need to remove those form our list, otherwise they will appear
             # as differences even though we technically know about them already
 
-            sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
-            gsRange = f"'{sheet}'!{self.lookupRanges[self.LOOKUP_SCS_PROGRESS_PIVOT_INTRANSIT] or 'CB4:EE'}"
+            sheet = self.lookupRanges.get(self.LOOKUP_SCS_SHEET_NAME, 'SCS Offload')
+            gsRange = f"'{sheet}'!{self.lookupRanges.get(self.LOOKUP_SCS_PROGRESS_PIVOT_INTRANSIT, 'CB4:EE')}"
             logger.debug('Fetching in-transit values from pivot table 2')
             data  = self.fetch_data(gsRange)
             logger.debug(data)
@@ -1345,7 +1345,7 @@ class Sheet:
                 logger.debug('No corrections required')
                 return
 
-            sheet = self.lookupRanges[self.LOOKUP_SCS_SHEET_NAME] or 'SCS Offload'
+            sheet = self.lookupRanges.get(self.LOOKUP_SCS_SHEET_NAME, 'SCS Offload')
             gsRange = f"'{sheet}'!A:A"
             body = {
                 'range': gsRange,
@@ -1397,10 +1397,10 @@ class Sheet:
         logger.debug('Building New SCS Data Message')
 
         # Get list of current systems/SCS from the Data sheet
-        systemRange = self.lookupRanges[self.LOOKUP_DATA_SYSTEM_TABLE] or 'Data!A59:A'
+        systemRange = self.lookupRanges.get(self.LOOKUP_DATA_SYSTEM_TABLE, 'Data!A59:A')
         idxDict = self._convert_A1_range_to_idx_range(systemRange)
         startRow = idxDict['startRowIndex']
-        endColumn = self.lookupRanges[self.LOOKUP_DATA_SYSTEM_TABLE_END] or 'BD'
+        endColumn = self.lookupRanges.get(self.LOOKUP_DATA_SYSTEM_TABLE_END, 'BD')
         endColumnNum = self._A1_to_index(endColumn)[0]
         commodityRange = systemRange.split(':')[0] + ':' + endColumn + str(startRow+1)  # Data!A59 + : + BD + 59
 
