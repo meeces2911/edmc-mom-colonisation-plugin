@@ -111,6 +111,9 @@ class This:
 
     def __del__(self):
         if self.requests_session:
+            # I don't think the destructor is ever actually called in normal operation
+            # But it does in any unit tests
+            print("Plugin unloading, closing web session")  # logger likely doesn't exist at this point
             self.requests_session.close()
 
 this = This()
@@ -355,7 +358,7 @@ def plugin_stop() -> None:
     """Stop the plugin"""
     logger.debug('Shutting down...')
     
-    this.thread.join()
+    this.thread.join(timeout=5)
     this.thread = None
 
     this._IMG_KNOWN = this._IMG_UNKNOWN = None
@@ -1400,5 +1403,3 @@ def capi_fleetcarrier(data):
         #this.queue.put(PushRequest(None, None, PushRequest.TYPE_CARRIER_RECONCILE, data))
 
         # Update current location
-
-    
