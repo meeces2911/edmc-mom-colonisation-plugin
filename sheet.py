@@ -212,7 +212,7 @@ class Sheet:
         except:
             return {}
 
-    def fetch_data_bulk(self, ranges: list[str]) -> any:
+    def fetch_data_bulk(self, ranges: list[str]) -> object | None:
         """Fetch multiple bits of data from the spreadsheet"""
         base_url = f'{self.BASE_SHEET_END_POINT}/v4/spreadsheets/{self.SPREADSHEET_ID}/values:batchGet?'
         for range in ranges:
@@ -527,9 +527,7 @@ class Sheet:
         """Populate CMDR specific data on start up"""
         # This shouldn't be called more than once, as we just want to pre-populate some stuff after a shutdown
         if not cmdr:
-            logger.error("populate_cmdr_data called without a valid cmdr")
-            traceback.print_stack()
-            return
+            raise Exception("populate_cmdr_data called without a valid cmdr")
        
         try:
             systemInfoSheet = self.lookupRanges.get(self.LOOKUP_SYSTEMINFO_SHEET_NAME, 'System Info')
@@ -913,14 +911,21 @@ class Sheet:
 
     def record_plugin_usage(self, cmdr: str, version: str) -> None:
         """Updates the Plugin sheet with usage info"""
+        if not cmdr:
+            raise Exception("record_plugin_usage called without a valid cmdr")
+        
         logger.debug('Building Plugin Usage Message')
         sheet = f"'{self.configSheetName.get()}'"
         range = f'{sheet}!E:G'
         data = self.fetch_data(range)
         logger.debug(data)
-        
+        cmdrList = data.get('values')
+
+        if not cmdrList:
+            raise Exception("Error retrieving CMDR list, unable to update plugin usage")
+
         setRow = False
-        for row in data['values']:
+        for row in cmdrList:
             # Skip blank rows
             if len(row) == 0:
                 continue
