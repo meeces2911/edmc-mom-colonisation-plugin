@@ -487,30 +487,40 @@ def worker() -> None:
 
 def initial_startup() -> None:
     """'First' startup code. Also called after settings have changed"""
-    # Get auth token first
-    this.auth = Auth(monitor.cmdr, this.requests_session)
-    this.auth.refresh()
-    if config.shutting_down:
-        return
+    logger.debug("Running initial_startup...")
+    plug.show_error("MoM: Fetching Latest Config...")
 
-    # Ok, now make sure we can access the spreadsheet
-    this.sheet = Sheet(this.auth, this.requests_session)
-    if config.shutting_down:
-        return
-    
-    # Request some initial settings
-    this.sheet.populate_initial_settings()
-    this.killswitches = this.sheet.killswitches
-    if config.shutting_down:
-        return
+    try:
+        # Get auth token first
+        this.auth = Auth(monitor.cmdr, this.requests_session)
+        this.auth.refresh()
+        if config.shutting_down:
+            return
+
+        # Ok, now make sure we can access the spreadsheet
+        this.sheet = Sheet(this.auth, this.requests_session)
+        if config.shutting_down:
+            return
+
+        # Request some initial settings
+        this.sheet.populate_initial_settings()
+        this.killswitches = this.sheet.killswitches
+        if config.shutting_down:
+            return
         
-    this.sheet.populate_cmdr_data(monitor.cmdr)
-    this.cmdrsAssignedCarrierName.set(config.get_str(CONFIG_ASSIGNED_CARRIER))
-    if config.shutting_down:
-        return
-    
-    # Record the fact that we're using the plugin
-    this.sheet.record_plugin_usage(monitor.cmdr, VERSION)
+        this.sheet.populate_cmdr_data(monitor.cmdr)
+        this.cmdrsAssignedCarrierName.set(config.get_str(CONFIG_ASSIGNED_CARRIER))
+        if config.shutting_down:
+            return
+
+        # Record the fact that we're using the plugin
+        this.sheet.record_plugin_usage(monitor.cmdr, VERSION)
+    except Exception as ex:
+        plug.show_error('MoM: Configuration Error')
+        raise ex
+
+    plug.show_error(' ')
+    logger.debug("Complete")
 
 def process_kill_siwtches() -> bool:
     """Go through all the killswitches and if any match, return True to suspend the plugin"""
