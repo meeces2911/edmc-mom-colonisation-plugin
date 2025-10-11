@@ -425,8 +425,9 @@ def worker() -> None:
         return
     
     # Add any of our UI widgets that require sheet data
-    _add_carrier_widget()
-    theme.update(this.uiFrame)
+    if this.uiFrameRows.get(increment=False) < 2:
+        _add_carrier_widget()
+        theme.update(this.uiFrame)
 
     # Then start the main loop
     logger.debug("Startup complete, entering main loop")
