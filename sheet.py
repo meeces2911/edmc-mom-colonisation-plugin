@@ -559,10 +559,15 @@ class Sheet:
         except Exception:
             logger.error(traceback.format_exc())
 
-    def sheet_names(self) -> list[str]:
-        if self.sheets:
-            return list(self.sheets.keys())
-        return []
+    def sheet_names(self, carriersOnly: bool = False) -> dict[str, str] | dict[str, int] | list[str]:
+        if carriersOnly:
+            if self.carrierTabNames:
+                return self.carrierTabNames.values()
+        else:
+            if self.sheets:
+                return self.sheets.keys()
+        
+        return ('ERROR',)
 
     def commodity_type_name_to_dropdown(self, commodity: str) -> str:
         """Returns the specific commodity name that matches the one in the spreadsheet"""

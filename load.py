@@ -30,6 +30,7 @@ from theme import theme
 
 from sheet import Sheet
 from auth import Auth, SPREADSHEET_ID
+from widgets import AutoComplete
 
 plugin_name = Path(__file__).resolve().parent.name
 logger = logging.getLogger(f'{appname}.{plugin_name}')
@@ -171,16 +172,19 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
     ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row.get(), columnspan=4, padx=PADX, pady=PADY, sticky=tk.EW)
 
     if this.sheet:
-        sheetNames: list[str] = this.sheet.sheet_names()
+        sheetNames: dict[str, int] = this.sheet.sheet_names()
+        carrierNames: dict[str, str] = this.sheet.sheet_names(carriersOnly=True)
     else:
         sheetNames: list[str] = ('ERROR',)
+        carrierNames: list[str] = ('ERROR',)
+
         
     with row as cur_row:
         nb.Label(frame, text='Settings Sheet').grid(row=cur_row, column=0, padx=PADX, pady=PADY, sticky=tk.W)
-        nb.OptionMenu(
-            frame, this.configSheetName, this.configSheetName.get(), *sheetNames
+        AutoComplete(
+            frame, this.configSheetName, list(sheetNames)
         ).grid(row=cur_row, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
-    
+
     with row as cur_row:
         this.clearAuthButton = ttk.Button(
             frame,
@@ -201,8 +205,8 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
 
     with row as cur_row:
         nb.Label(frame, text='Currently Assigned Carrier').grid(row=cur_row, column=0, padx=PADX, pady=PADY, sticky=tk.W)
-        nb.OptionMenu(
-            frame, this.cmdrsAssignedCarrierName, '', *this.sheet.carrierTabNames.values()
+        AutoComplete(
+            frame, this.cmdrsAssignedCarrierName, list(carrierNames)
         ).grid(row=cur_row, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
 
     ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row.get(), columnspan=4, padx=PADX, pady=PADY, sticky=tk.EW)

@@ -69,11 +69,15 @@ sys.modules['config'] = module
 ## companion.py
 ##
 
+class StubSession:
+    STATE_OK:int = 3
+    state: int = STATE_OK
+
 module = type(sys)('companion')
 module.CAPIData = {}
 module.SERVER_LIVE = 'http://localhost'
 module.capi_fleetcarrier_query_cooldown = 60 * 15
-module.session = {}
+module.session = StubSession
 sys.modules['companion'] = module
 
 ##
@@ -132,9 +136,38 @@ class StubVar:
         print(f'Varbale GET called with {args} or {kwargs}')
         return self._var
 
+class StubWidget:    
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __getitem__(self, key):
+        return StubWidget(self)
+
+    def grid(self, *args, **kwargs):
+        pass
+
+    def configure(self, *args, **kwargs):
+        pass
+
+class StubStyle:
+    def __init__(self):
+        pass
+
+    def lookup(self, *args, **kwargs):
+        pass
+
 class StubTTK:
-    Notebook: object = {}
-    Frame: object = {}
+    def __init__(self):
+        pass
+
+    def Style():
+        return StubStyle
+
+    Notebook: object = StubWidget
+    Frame: object = StubWidget
+    Combobox: object = StubWidget
+    Label: object = StubWidget
+    OptionMenu: object = StubWidget
 
 def tkinter_stringvar(value):
     return StubVar(value)
@@ -155,4 +188,7 @@ module.BooleanVar = tkinter_booleanvar
 module.IntVar = tkinter_intvar
 module.PhotoImage = tkinter_photoimage
 module.Frame = StubTTK.Frame
+module.Label = StubTTK.Label
+module.N = module.E = module.S = module.W = 0
+module.OptionMenu = StubTTK.OptionMenu
 sys.modules['tkinter'] = module

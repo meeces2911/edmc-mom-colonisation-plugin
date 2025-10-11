@@ -22,6 +22,7 @@ def before_after_test(__global_mocks):
     config.config.shutting_down = False
     ACTUAL_HTTP_PUT_POST_REQUESTS.clear()
     __plugin_start_stop()
+    config.config.shutting_down = False
 
 def test_journal_entry_Startup_LoadGame():
     """Test 'Startup' or 'LoadGame' events"""
