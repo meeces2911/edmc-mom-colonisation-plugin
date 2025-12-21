@@ -97,7 +97,7 @@ class StubAutoInc(contextlib.AbstractContextManager):
         pass
 
     def get(self, increment=True) -> int:
-        pass
+        return 0
 
     def __enter__(self):
         pass
