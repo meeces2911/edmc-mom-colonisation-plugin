@@ -14,6 +14,7 @@ from tkinter import ttk
 from threading import Lock, Thread
 from pathlib import Path
 from queue import SimpleQueue
+from itertools import count
 
 import semantic_version
 import time
@@ -25,7 +26,6 @@ from monitor import monitor
 from config import config, appname, appversion, user_agent
 from companion import CAPIData, SERVER_LIVE, capi_fleetcarrier_query_cooldown, session as csession
 from ttkHyperlinkLabel import HyperlinkLabel
-from prefs import AutoInc
 from theme import theme
 
 from sheet import Sheet
@@ -61,6 +61,19 @@ CONFIG_FEAT_ASSUME_CARRIER_UNLOAD_SCS = 'mom_feature_assume_carrier_unload_scs'
 # Use the same 'icons' as the EDSM plugin
 IMG_KNOWN_B64 = 'R0lGODlhEAAQAMIEAFWjVVWkVWS/ZGfFZ////////////////yH5BAEKAAQALAAAAAAQABAAAAMvSLrc/lAFIUIkYOgNXt5g14Dk0AQlaC1CuglM6w7wgs7rMpvNV4q932VSuRiPjQQAOw=='
 IMG_UNKNOWN_B64 = 'R0lGODlhEAAQAKEDAGVLJ+ddWO5fW////yH5BAEKAAMALAAAAAAQABAAAAItnI+pywYRQBtA2CtVvTwjDgrJFlreEJRXgKSqwB5keQ6vOKq1E+7IE5kIh4kCADs='
+
+class SaneCount(count):
+    """
+    What in the actual f*ck! How does an iterator not have a pointer to its current value!?
+    Thats just insane.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.current = 0
+
+    def __next__(self):
+        self.current = super().__next__()
+        return self.current
 
 # Probably overkill, but lets start with a sensible framework like how the EDSM plugin does it
 class This:
@@ -101,7 +114,7 @@ class This:
         self.capiMutex: threading.Semaphore = threading.Semaphore()
 
         self.uiFrame: tk.Frame | None = None
-        self.uiFrameRows: AutoInc = AutoInc(start=0)
+        self.uiFrameRows: SaneCount = SaneCount()
         self._IMG_KNOWN = tk.PhotoImage(data=IMG_KNOWN_B64)
         self._IMG_UNKNOWN = tk.PhotoImage(data=IMG_UNKNOWN_B64)
         self.pluginStatusIcon: tk.Label | None = None
@@ -160,16 +173,15 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
     frame: tk.Frame = nb.Frame(parent)
     frame.columnconfigure(1, weight=1)
 
-    row = AutoInc(start=0)
+    row = SaneCount()
 
-    with row as cur_row:
-        HyperlinkLabel(
-            frame, text='MERC Expedition Needs', background=nb.Label().cget('background'), url=f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit',
-            underline=True
-        ).grid(row=cur_row, columnspan=2, padx=PADX, pady=PADY+4, sticky=tk.W)    
-        nb.Label(frame, text='Version %s' % VERSION).grid(row=cur_row, column=3, padx=PADX, pady=PADY+4, sticky=tk.W)
+    HyperlinkLabel(
+        frame, text='MERC Expedition Needs', background=nb.Label().cget('background'), url=f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit',
+        underline=True
+    ).grid(row=next(row), columnspan=2, padx=PADX, pady=PADY+4, sticky=tk.W)    
+    nb.Label(frame, text='Version %s' % VERSION).grid(row=row.current, column=3, padx=PADX, pady=PADY+4, sticky=tk.W)
 
-    ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row.get(), columnspan=4, padx=PADX, pady=PADY, sticky=tk.EW)
+    ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=next(row), columnspan=4, padx=PADX, pady=PADY, sticky=tk.EW)
 
     if this.sheet:
         sheetNames: dict[str, int] = this.sheet.sheet_names()
@@ -179,44 +191,41 @@ def plugin_prefs(parent: ttk.Notebook, cmdr: str | None, is_beta: bool) -> nb.Fr
         carrierNames: list[str] = ('ERROR',)
 
         
-    with row as cur_row:
-        nb.Label(frame, text='Settings Sheet').grid(row=cur_row, column=0, padx=PADX, pady=PADY, sticky=tk.W)
-        AutoComplete(
-            frame, this.configSheetName, list(sheetNames)
-        ).grid(row=cur_row, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
+    nb.Label(frame, text='Settings Sheet').grid(row=next(row), column=0, padx=PADX, pady=PADY, sticky=tk.W)
+    AutoComplete(
+        frame, this.configSheetName, list(sheetNames)
+    ).grid(row=row.current, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
 
-    with row as cur_row:
-        token = None
-        if this.auth:
-            token = this.auth.access_token
+    token = None
+    if this.auth:
+        token = this.auth.access_token
 
-        this.clearAuthButton = ttk.Button(
-            frame,
-            text='Clear Google Authentication',
-            command=lambda: clear_token_and_disable_button(),
-            state=tk.ACTIVE if token else tk.DISABLED
-        )
-        this.clearAuthButton.grid(row=cur_row, padx=BUTTONX, pady=PADY, sticky=tk.W)
+    this.clearAuthButton = ttk.Button(
+        frame,
+        text='Clear Google Authentication',
+        command=lambda: clear_token_and_disable_button(),
+        state=tk.ACTIVE if token else tk.DISABLED
+    )
+    this.clearAuthButton.grid(row=next(row), padx=BUTTONX, pady=PADY, sticky=tk.W)
 
-        ttk.Button(
-            frame, text='Clear all settings', command=lambda: clear_saved_settings(parent)
-        ).grid(row=cur_row, column=3, columnspan=1, padx=BUTTONX, pady=PADY, sticky=tk.W)
+    ttk.Button(
+        frame, text='Clear all settings', command=lambda: clear_saved_settings(parent)
+    ).grid(row=row.current, column=3, columnspan=1, padx=BUTTONX, pady=PADY, sticky=tk.W)
 
-    ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row.get(), columnspan=4, padx=PADX, pady=PADY+4, sticky=tk.EW)
+    ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=next(row), columnspan=4, padx=PADX, pady=PADY+4, sticky=tk.EW)
 
-    nb.Checkbutton(frame, text='Show Connection Status', variable=this.showPluginStatus).grid(row=row.get(), column=0, padx=PADX, pady=PADY, sticky=tk.W)
-    nb.Checkbutton(frame, text='Show Currently Assigned Carrier', variable=this.showAssignedCarrier).grid(row=row.get(), column=0, padx=PADX, pady=PADY, sticky=tk.W)
+    nb.Checkbutton(frame, text='Show Connection Status', variable=this.showPluginStatus).grid(row=next(row), column=0, padx=PADX, pady=PADY, sticky=tk.W)
+    nb.Checkbutton(frame, text='Show Currently Assigned Carrier', variable=this.showAssignedCarrier).grid(row=next(row), column=0, padx=PADX, pady=PADY, sticky=tk.W)
 
-    with row as cur_row:
-        nb.Label(frame, text='Currently Assigned Carrier').grid(row=cur_row, column=0, padx=PADX, pady=PADY, sticky=tk.W)
-        AutoComplete(
-            frame, this.cmdrsAssignedCarrierName, list(carrierNames)
-        ).grid(row=cur_row, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
+    nb.Label(frame, text='Currently Assigned Carrier').grid(row=next(row), column=0, padx=PADX, pady=PADY, sticky=tk.W)
+    AutoComplete(
+        frame, this.cmdrsAssignedCarrierName, list(carrierNames)
+    ).grid(row=row.current, column=1, columnspan=2, padx=PADX, pady=BOXY, sticky=tk.W)
 
-    ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row.get(), columnspan=4, padx=PADX, pady=PADY, sticky=tk.EW)
+    ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=next(row), columnspan=4, padx=PADX, pady=PADY, sticky=tk.EW)
 
-    nb.Checkbutton(frame, text='Delivery Tracking', variable=this.featureTrackDelivery).grid(row=row.get(), column=0, padx=PADX, pady=PADY, sticky=tk.W)
-    nb.Checkbutton(frame, text='Assume Carrier Buy is for Unloading to SCS', variable=this.featureAssumeCarrierUnloadToSCS).grid(row=row.get(), column=0, padx=PADX, pady=PADY, sticky=tk.W)
+    nb.Checkbutton(frame, text='Delivery Tracking', variable=this.featureTrackDelivery).grid(row=next(row), column=0, padx=PADX, pady=PADY, sticky=tk.W)
+    nb.Checkbutton(frame, text='Assume Carrier Buy is for Unloading to SCS', variable=this.featureAssumeCarrierUnloadToSCS).grid(row=next(row), column=0, padx=PADX, pady=PADY, sticky=tk.W)
 
     # If the dialog is closed without the user clicking ok, make sure we resume the worker
     frame.bind('<Destroy>', lambda event: prefs_changed_cancelled())
@@ -278,7 +287,7 @@ def prefs_changed(cmdr: str | None, is_beta: bool) -> None:
     config.set(CONFIG_FEAT_ASSUME_CARRIER_UNLOAD_SCS, this.featureAssumeCarrierUnloadToSCS.get())
 
     # Update the widgets
-    this.uiFrameRows = AutoInc(start=0)
+    this.uiFrameRows = SaneCount()
     for widget in this.uiFrame.winfo_children():
         widget.destroy()
     this.uiFrame.grid(row=0)
@@ -296,7 +305,7 @@ def prefs_changed(cmdr: str | None, is_beta: bool) -> None:
 def plugin_app(parent: tk.Frame) -> tk.Frame:
     """Add our UI widgets here"""    
     this.uiFrame = tk.Frame(parent)
-    this.uiFrameRows = AutoInc(start=0)
+    this.uiFrameRows = SaneCount()
 
     w1 = _add_status_widget()
     w2 = _add_carrier_widget()
@@ -312,10 +321,9 @@ def _add_status_widget() -> bool:
     row = this.uiFrameRows
 
     if this.showPluginStatus.get():
-        with row as cur_row:
-            tk.Label(frame, text='Status:', ).grid(row=cur_row, column=0, sticky=tk.W)
-            this.pluginStatusIcon = tk.Label(frame, image=this._IMG_UNKNOWN)
-            this.pluginStatusIcon.grid(row=cur_row, column=1, sticky=tk.W)
+        tk.Label(frame, text='Status:', ).grid(row=next(row), column=0, sticky=tk.W)
+        this.pluginStatusIcon = tk.Label(frame, image=this._IMG_UNKNOWN)
+        this.pluginStatusIcon.grid(row=row.current, column=1, sticky=tk.W)
         return True
     return False
 
@@ -324,16 +332,16 @@ def _add_carrier_widget() -> bool:
     row = this.uiFrameRows
 
     if this.showAssignedCarrier.get() and this.sheet:
-        with row as cur_row:
-            tk.Label(frame, text="Carrier:").grid(row=cur_row, column=0, sticky=tk.W)
-            dropdown = tk.OptionMenu(
-                frame, this.cmdrsAssignedCarrierName, '', *this.sheet.carrierTabNames.values(), command=lambda value: config.set(CONFIG_ASSIGNED_CARRIER, value)
-            )
-            dropdown.grid(row=cur_row, column=1, sticky=tk.W)
-            dropdown.configure(background=ttk.Style().lookup('TMenu', 'background'), highlightthickness=0, borderwidth=0)
-            dropdown['menu'].configure(background=ttk.Style().lookup('TMenu', 'background'))        # TODO: Come back later and continue bashing this until it works
-            return True
-        return False
+        tk.Label(frame, text="Carrier:").grid(row=next(row), column=0, sticky=tk.W)
+        dropdown = tk.OptionMenu(
+            frame, this.cmdrsAssignedCarrierName, '', *this.sheet.carrierTabNames.values(), command=lambda value: config.set(CONFIG_ASSIGNED_CARRIER, value)
+        )
+        dropdown.grid(row=row.current, column=1, sticky=tk.W)
+        dropdown.configure(background=ttk.Style().lookup('TMenu', 'background'), highlightthickness=0, borderwidth=0)
+        dropdown['menu'].configure(background=ttk.Style().lookup('TMenu', 'background'))        # TODO: Come back later and continue bashing this until it works
+        return True
+        
+    return False
 
 def _update_status_icon(newIcon: tk.PhotoImage) -> None:
     """Updates the Plugin Status icon if its currently viewable"""
@@ -425,7 +433,7 @@ def worker() -> None:
         return
     
     # Add any of our UI widgets that require sheet data
-    if this.uiFrameRows.get(increment=False) < 2:
+    if this.uiFrameRows.current < 2:
         _add_carrier_widget()
         theme.update(this.uiFrame)
 
