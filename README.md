@@ -86,4 +86,4 @@ This [EDMC](https://github.com/EDCD/EDMarketConnector) plugin is designed to hel
 
 - If the plugin doesn't get loaded:
    - Make sure you are running an up-to-date version of ED Market Connector
-   - Check the `EDMarketConnector.log` log file in EDMC's log folder (see screenshot above) to see where EDMC is actually loading plugins from. In rare cases it's possible for EDMC to load plugins from e.g. `C:\Program Files (x86)\EDMarketConnector\plugins` despite showing a different plugins folder in the settings. If so, move your mom_colonisation_tracker folder there.
+   - When running EDMC as another user (e.g. as administrator), note that the "Open Plugins Folder" button may open the folder for your currently logged in account. Make sure you place any plugins in the folder which corresponds to the user which is running EDMC.
