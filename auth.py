@@ -379,7 +379,7 @@ class HTTPRequestHandler(BaseHTTPRequestHandler):
 <body>
 
 <pre id="content" style="white-space: pre-wrap;">
-Please authorise access to the 'MERC Expantion Needs' Spreadsheet. 
+Please authorise access to the 'Highway Carrier Operations' Spreadsheet. 
 <a href="{SPREADSHEET_URL}">Click here</a> to open it if its not shown in the list below, and then refresh this page.
 </pre>
 

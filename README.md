@@ -69,7 +69,7 @@ This [EDMC](https://github.com/EDCD/EDMarketConnector) plugin is designed to hel
 1. Close and **restart** EDMC
 1. A Google OAuth screen should open in your web browser, sign into that and confirm access
    > There are some reports of this page not loading correctly on Linux/Steam Deck if the browser isn't already open. To work around this, make sure the default web browser is open before launching EDMC. The OAuth screen should then open in a new tab.
-1. A second Google screen should open, asking you to pick the **MERC Expantion Needs** sheet. Select that and confirm access.
+1. A second Google screen should open, asking you to pick the **Highway Carrier Operations** sheet. Select that and confirm access.
 
 ## Troubleshooting
 - Check the plugin is installed correctly.
@@ -83,3 +83,7 @@ This [EDMC](https://github.com/EDCD/EDMarketConnector) plugin is designed to hel
 - If the plugin is running, but dont doing something correctly, try changing the Log Level on the first **Configuration** tab to DEBUG, reproduce the issue, and then send me the log file to look at. (or check it out yourself... I'm logging *quite* a bit 😜)
    - You can click the **Open Log Folder** button for a quick shortcut to get to the logs folder.
       ![Configuration Tab, Setting Log Level to Debug](./documentation/Check_3.png)
+
+- If the plugin doesn't get loaded:
+   - Make sure you are running an up-to-date version of ED Market Connector
+   - Check the `EDMarketConnector.log` log file in EDMC's log folder (see screenshot above) to see where EDMC is actually loading plugins from. In rare cases it's possible for EDMC to load plugins from e.g. `C:\Program Files (x86)\EDMarketConnector\plugins` despite showing a different plugins folder in the settings. If so, move your mom_colonisation_tracker folder there.
